@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: prisma-dae-db
+    environment:
+      POSTGRES_USER: prisma_admin
+      POSTGRES_PASSWORD: prisma_secure_2026
+      POSTGRES_DB: prisma_dae
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - prisma-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prisma_admin -d prisma_dae"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  prisma-network:
+    driver: bridge
