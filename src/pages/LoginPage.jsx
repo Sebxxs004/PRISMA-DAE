@@ -37,12 +37,13 @@ function LoginPage() {
             <p className="font-mono text-xs uppercase tracking-[0.4em] text-cyan-300/90">
               PRISMA DAE
             </p>
-            <h1 className="max-w-sm font-mono text-3xl font-semibold uppercase tracking-[0.18em] text-slate-50 md:text-[2.15rem]">
-              Sistema de Acceso y Enlace Judicial
+            <h1 className="max-w-sm font-mono text-3xl font-semibold uppercase tracking-[0.14em] text-slate-50 md:text-[2.15rem]">
+              Simulador de Investigación Estructural del Despacho Fiscal
             </h1>
             <p className="max-w-sm text-sm leading-6 text-slate-300/90">
-              Ingreso seguro para operadores autorizados. El entorno visual se
-              diseña como una central de inteligencia para análisis investigativo.
+              Acceso seguro para fiscales autorizados. Fortalezca la identificación
+              de patrones criminales, la asociación de casos, la articulación del
+              equipo y la formulación del plan de acción para casos complejos.
             </p>
           </div>
 
@@ -90,7 +91,7 @@ function LoginPage() {
               disabled={loading}
               className="w-full rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 font-mono text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200 transition disabled:opacity-50 hover:bg-cyan-500/20 hover:text-white"
             >
-              {loading ? 'INGRESANDO...' : 'Ingresar al sistema'}
+              {loading ? 'INGRESANDO...' : 'Ingresar al simulador'}
             </button>
           </form>
 
@@ -122,12 +123,14 @@ function LoginPage() {
           <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">
             PRISMA DAE
           </p>
-          <h2 className="mt-2 text-4xl font-semibold tracking-[0.2em] text-slate-100 drop-shadow-[0_0_24px_rgba(0,240,255,0.18)] md:text-5xl">
-            Investigación en curso
+          <h2 className="mt-2 text-2xl font-semibold tracking-[0.06em] text-slate-100 drop-shadow-[0_0_24px_rgba(0,240,255,0.18)] md:text-4xl">
+            Entrenamiento para fiscales en análisis estratégico, asociación de
+            casos y dirección integral de investigaciones complejas.
           </h2>
-          <p className="mt-2 text-sm leading-7 text-slate-300/90 md:text-base">
-            Sistema diseñado para relacionar expedientes, nexos y evidencias en
-            un entorno visual de alta confidencialidad.
+          <p className="mt-3 text-sm leading-7 text-slate-300/90 md:text-base">
+            Este juego fortalece el análisis de expedientes, la identificación de
+            fenómenos criminales, la coordinación intra e interinstitucional y la
+            construcción del plan de acción del despacho con enfoque jurídico.
           </p>
 
           <img

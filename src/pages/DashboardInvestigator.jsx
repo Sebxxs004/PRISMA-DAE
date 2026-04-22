@@ -280,38 +280,91 @@ function DashboardInvestigator({ token }) {
       const board = boardRef.current;
       const boardWidth = Math.max(700, board?.clientWidth || 980);
       const boardHeight = Math.max(420, board?.clientHeight || 600);
+      const minX = NODE_RADIUS;
+      const maxX = boardWidth - NODE_RADIUS;
+      const minY = NODE_RADIUS;
+      const maxY = boardHeight - NODE_RADIUS;
+      const minDistance = NODE_RADIUS * 2;
+      const nextVelocities = { ...velocities };
 
-      setNodes((currentNodes) =>
-        currentNodes.map((node) => {
-          const speed = velocities[node.id] || { vx: 1, vy: 1 };
+      setNodes((currentNodes) => {
+        const movedNodes = currentNodes.map((node) => {
+          const speed = nextVelocities[node.id] || { vx: 1, vy: 1 };
           let nextX = node.x + speed.vx;
           let nextY = node.y + speed.vy;
           let vx = speed.vx;
           let vy = speed.vy;
 
-          if (nextX < NODE_RADIUS || nextX > boardWidth - NODE_RADIUS) {
+          if (nextX < minX || nextX > maxX) {
             vx = -vx;
-            nextX = Math.min(Math.max(NODE_RADIUS, nextX), boardWidth - NODE_RADIUS);
+            nextX = Math.min(Math.max(minX, nextX), maxX);
           }
-          if (nextY < NODE_RADIUS || nextY > boardHeight - NODE_RADIUS) {
+          if (nextY < minY || nextY > maxY) {
             vy = -vy;
-            nextY = Math.min(Math.max(NODE_RADIUS, nextY), boardHeight - NODE_RADIUS);
+            nextY = Math.min(Math.max(minY, nextY), maxY);
           }
 
-          if (vx !== speed.vx || vy !== speed.vy) {
-            setVelocities((current) => ({
-              ...current,
-              [node.id]: { vx, vy },
-            }));
-          }
+          nextVelocities[node.id] = { vx, vy };
 
           return {
             ...node,
             x: nextX,
             y: nextY,
           };
-        })
-      );
+        });
+
+        for (let i = 0; i < movedNodes.length; i += 1) {
+          for (let j = i + 1; j < movedNodes.length; j += 1) {
+            const firstNode = movedNodes[i];
+            const secondNode = movedNodes[j];
+
+            let dx = secondNode.x - firstNode.x;
+            let dy = secondNode.y - firstNode.y;
+            let distance = Math.hypot(dx, dy);
+
+            if (distance >= minDistance) {
+              continue;
+            }
+
+            if (distance < 0.0001) {
+              dx = 0.0001;
+              dy = 0;
+              distance = 0.0001;
+            }
+
+            const normalX = dx / distance;
+            const normalY = dy / distance;
+            const overlap = minDistance - distance;
+
+            firstNode.x = Math.min(Math.max(minX, firstNode.x - normalX * (overlap / 2)), maxX);
+            firstNode.y = Math.min(Math.max(minY, firstNode.y - normalY * (overlap / 2)), maxY);
+            secondNode.x = Math.min(Math.max(minX, secondNode.x + normalX * (overlap / 2)), maxX);
+            secondNode.y = Math.min(Math.max(minY, secondNode.y + normalY * (overlap / 2)), maxY);
+
+            const velocityA = nextVelocities[firstNode.id] || { vx: 1, vy: 1 };
+            const velocityB = nextVelocities[secondNode.id] || { vx: 1, vy: 1 };
+            const relativeVX = velocityB.vx - velocityA.vx;
+            const relativeVY = velocityB.vy - velocityA.vy;
+            const velocityAlongNormal = relativeVX * normalX + relativeVY * normalY;
+
+            if (velocityAlongNormal < 0) {
+              const impulse = -velocityAlongNormal;
+              nextVelocities[firstNode.id] = {
+                vx: velocityA.vx - impulse * normalX,
+                vy: velocityA.vy - impulse * normalY,
+              };
+              nextVelocities[secondNode.id] = {
+                vx: velocityB.vx + impulse * normalX,
+                vy: velocityB.vy + impulse * normalY,
+              };
+            }
+          }
+        }
+
+        setVelocities(nextVelocities);
+
+        return movedNodes;
+      });
     }, TICK_MS);
 
     return () => clearInterval(interval);
@@ -506,8 +559,13 @@ function DashboardInvestigator({ token }) {
     const nextSelection = [...selectedNodeIds, nodeId];
     setSelectedNodeIds(nextSelection);
 
-    if (nextSelection.length === 3) {
-      const newEdges = connectPairSet(nextSelection).filter((edge) => {
+    if (nextSelection.length >= 2) {
+      const candidateEdges =
+        nextSelection.length === 2
+          ? [{ a: nextSelection[0], b: nextSelection[1] }]
+          : connectPairSet(nextSelection);
+
+      const newEdges = candidateEdges.filter((edge) => {
         const key = getPairKey(edge.a, edge.b);
         return !connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
       });
@@ -516,7 +574,9 @@ function DashboardInvestigator({ token }) {
         setConnections((current) => [...current, ...newEdges]);
       }
 
-      setSelectedNodeIds([]);
+      if (nextSelection.length === 3) {
+        setSelectedNodeIds([]);
+      }
     }
   };
 

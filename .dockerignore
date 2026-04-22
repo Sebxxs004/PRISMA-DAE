@@ -1,0 +1,9 @@
+node_modules
+server/node_modules
+dist
+.git
+.gitignore
+.azure
+.vscode
+.deploy_tmp
+SETUP_DOCKER.md
