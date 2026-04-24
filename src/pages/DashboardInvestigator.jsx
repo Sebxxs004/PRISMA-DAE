@@ -296,6 +296,14 @@ function buildCompactGraphLayout(nodes, width = 320, height = 150) {
   };
 }
 
+const PLAN_ACCION_OPTIONS = [
+  'Formular imputación',
+  'Acumular procesos',
+  'Solicitar medidas asegurativas',
+  'Precluir o Archivar',
+  'Compulsa de copias'
+];
+
 function DashboardInvestigator({ token }) {
   const boardRef = useRef(null);
   const groupedRegionsRef = useRef([]);
@@ -322,6 +330,7 @@ function DashboardInvestigator({ token }) {
   const [pendingConnections, setPendingConnections] = useState([]);
   const [justificationText, setJustificationText] = useState('');
   const [activeTab, setActiveTab] = useState('tablero');
+  const [planAccion, setPlanAccion] = useState({});
   const [caseGuesses, setCaseGuesses] = useState({});
   const [groupGuesses, setGroupGuesses] = useState({});
   const [tiempoLimiteMinutos, setTiempoLimiteMinutos] = useState(10);
@@ -414,6 +423,7 @@ function DashboardInvestigator({ token }) {
           if (draft.connectionJustifications) setConnectionJustifications(draft.connectionJustifications);
           if (draft.caseGuesses) setCaseGuesses(draft.caseGuesses);
           if (draft.groupGuesses) setGroupGuesses(draft.groupGuesses);
+          if (draft.planAccion) setPlanAccion(draft.planAccion);
         }
       } catch (err) {
         console.error('Error cargando borrador:', err);
@@ -500,7 +510,8 @@ function DashboardInvestigator({ token }) {
           zonaOperacionGuess,
           connectionJustifications,
           caseGuesses,
-          groupGuesses
+          groupGuesses,
+          planAccion
         };
         await axios.put(`${API_URL}/investigacion-feedback/me/draft`, { estado_json: draftData }, { headers: authHeaders });
       } catch (err) {
@@ -510,7 +521,7 @@ function DashboardInvestigator({ token }) {
 
     const handler = setTimeout(saveDraft, 5000);
     return () => clearTimeout(handler);
-  }, [connections, finalizedGroups, startTimestamp, elapsedSeconds, autorIntelectualGuess, zonaOperacionGuess, connectionJustifications, caseGuesses, groupGuesses, investigationFinished, validationResult, feedbackSubmitted, loadingCases, authHeaders]);
+  }, [connections, finalizedGroups, startTimestamp, elapsedSeconds, autorIntelectualGuess, zonaOperacionGuess, connectionJustifications, caseGuesses, groupGuesses, planAccion, investigationFinished, validationResult, feedbackSubmitted, loadingCases, authHeaders]);
 
   useEffect(() => {
     if (!investigationFinished && !validationResult && !finishing) {
@@ -874,6 +885,14 @@ function DashboardInvestigator({ token }) {
       missing: feedback.missing || [],
     });
 
+    if (feedback.planAccion && Array.isArray(feedback.planAccion)) {
+      const planMap = {};
+      feedback.planAccion.forEach(p => {
+        planMap[p.opcion] = p.justificacion;
+      });
+      setPlanAccion(planMap);
+    }
+
     const reasonsMap = {};
     (feedback.justificaciones || []).forEach((item) => {
       reasonsMap[item.pair_key] = item.reason;
@@ -1193,6 +1212,7 @@ function DashboardInvestigator({ token }) {
           caseGuesses: result.caseGuesses,
           groupGuesses: result.groupGuesses,
           groupJustifications: result.groupJustifications,
+          planAccion: result.planAccion,
         },
         { headers: authHeaders }
       );
@@ -1438,6 +1458,7 @@ function DashboardInvestigator({ token }) {
         caseGuesses,
         groupGuesses,
         groupJustifications,
+        planAccion: Object.entries(planAccion).map(([opcion, justificacion]) => ({ opcion, justificacion })),
       });
     } catch (requestError) {
       console.error('Error finishing investigation:', requestError);
@@ -1470,6 +1491,7 @@ function DashboardInvestigator({ token }) {
     setGroupGuesses({});
     setConnectionJustifications({});
     setGroupMeta({});
+    setPlanAccion({});
     setFeedbackSubmitted(false);
   };
 
@@ -1533,8 +1555,9 @@ function DashboardInvestigator({ token }) {
               <button
                 type="button"
                 onClick={finishInvestigation}
-                disabled={finishing || investigationFinished || feedbackChecking || feedbackSubmitted || Boolean(validationResult)}
-                className="flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-60"
+                disabled={finishing || investigationFinished || feedbackChecking || feedbackSubmitted || Boolean(validationResult) || Object.values(planAccion).some(j => j.trim() === '')}
+                title={Object.values(planAccion).some(j => j.trim() === '') ? 'Debes justificar todas las opciones del plan de acción que seleccionaste' : ''}
+                className="flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <FiTarget size={15} />
                 {finishing ? 'Validando...' : 'Terminar investigacion'}
@@ -1875,6 +1898,48 @@ function DashboardInvestigator({ token }) {
                 </div>
               </div>
 
+              {/* Plan de Acción Global */}
+              <div className="border-t border-slate-600/30 pt-4 mt-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400">Plan de Acción Global</p>
+                <div className="space-y-3">
+                  {PLAN_ACCION_OPTIONS.map((opcion) => {
+                    const isChecked = planAccion.hasOwnProperty(opcion);
+                    return (
+                      <div key={opcion} className={`rounded border p-2 transition-colors ${isChecked ? 'border-cyan-500/40 bg-cyan-500/5' : 'border-slate-600/30 bg-slate-900/50 hover:border-slate-500/50'}`}>
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 flex-shrink-0 cursor-pointer accent-cyan-500"
+                            checked={isChecked}
+                            disabled={investigationFinished}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setPlanAccion((prev) => ({ ...prev, [opcion]: '' }));
+                              } else {
+                                setPlanAccion((prev) => {
+                                  const next = { ...prev };
+                                  delete next[opcion];
+                                  return next;
+                                });
+                              }
+                            }}
+                          />
+                          <span className={`text-xs ${isChecked ? 'font-medium text-cyan-100' : 'text-slate-300'}`}>{opcion}</span>
+                        </label>
+                        {isChecked && (
+                          <textarea
+                            disabled={investigationFinished}
+                            value={planAccion[opcion] || ''}
+                            onChange={(e) => setPlanAccion((prev) => ({ ...prev, [opcion]: e.target.value }))}
+                            placeholder={`Justifica por qué aplicas: ${opcion}...`}
+                            className="mt-2 h-14 w-full resize-none rounded border border-cyan-500/20 bg-slate-950/80 p-2 text-xs text-slate-200 outline-none focus:border-cyan-500/50"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               {validationResult && (
                 <div className="space-y-2 border-t border-slate-600/30 pt-2">
                   <div className="rounded border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -2100,6 +2165,20 @@ function DashboardInvestigator({ token }) {
                     />
                   </div>
                 ))}
+              </div>
+            )}
+
+            {Object.keys(planAccion).length > 0 && (
+              <div className="mt-4 rounded border border-cyan-500/30 bg-cyan-500/10 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-cyan-200">Plan de Acción del Despacho</p>
+                <div className="space-y-2">
+                  {Object.entries(planAccion).map(([opcion, justificacion]) => (
+                    <div key={opcion} className="rounded bg-slate-900/50 p-2">
+                      <p className="text-xs font-bold text-cyan-300">{opcion}</p>
+                      <p className="mt-1 text-xs text-slate-300 italic">"{justificacion}"</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
