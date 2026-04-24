@@ -3,6 +3,24 @@ const pool = require('../db');
 
 const router = express.Router();
 
+const ensureMetadataColumns = async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE carpetas
+      ADD COLUMN IF NOT EXISTS tipo_delito VARCHAR(150),
+      ADD COLUMN IF NOT EXISTS fecha_caso DATE,
+      ADD COLUMN IF NOT EXISTS victima TEXT,
+      ADD COLUMN IF NOT EXISTS victimario TEXT,
+      ADD COLUMN IF NOT EXISTS zona_territorial VARCHAR(180),
+      ADD COLUMN IF NOT EXISTS actores_involucrados TEXT
+    `);
+  } catch (error) {
+    console.error('No fue posible asegurar columnas de metadatos en carpetas:', error);
+  }
+};
+
+ensureMetadataColumns();
+
 // Middleware para verificar token (simplificado)
 const verificarToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -17,7 +35,8 @@ const verificarToken = (req, res, next) => {
 router.get('/', verificarToken, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT c.id, c.nombre, c.descripcion, c.imagen_url, c.modalidad, c.patrones, c.es_aislado, c.created_at,
+          SELECT c.id, c.nombre, c.descripcion, c.imagen_url, c.modalidad, c.patrones, c.es_aislado, c.created_at,
+            c.tipo_delito, c.fecha_caso, c.victima, c.victimario, c.zona_territorial, c.actores_involucrados,
              u.nombre as created_by_nombre,
              COUNT(d.id) as cantidad_documentos
       FROM carpetas c
@@ -36,15 +55,46 @@ router.get('/', verificarToken, async (req, res) => {
 // Crear carpeta
 router.post('/', verificarToken, async (req, res) => {
   try {
-    const { nombre, descripcion, imagen_url, usuario_id, modalidad, patrones } = req.body;
+    const {
+      nombre,
+      descripcion,
+      imagen_url,
+      usuario_id,
+      modalidad,
+      patrones,
+      tipo_delito,
+      fecha_caso,
+      victima,
+      victimario,
+      zona_territorial,
+      actores_involucrados,
+    } = req.body;
 
     if (!nombre || !usuario_id) {
       return res.status(400).json({ error: 'Nombre y usuario_id requeridos' });
     }
 
     const result = await pool.query(
-      'INSERT INTO carpetas (nombre, descripcion, imagen_url, modalidad, patrones, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nombre, descripcion, imagen_url, modalidad, patrones, created_at',
-      [nombre, descripcion || null, imagen_url || null, modalidad || null, patrones || null, usuario_id]
+      `INSERT INTO carpetas (
+        nombre, descripcion, imagen_url, modalidad, patrones, created_by,
+        tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING id, nombre, descripcion, imagen_url, modalidad, patrones,
+                tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados, created_at`,
+      [
+        nombre,
+        descripcion || null,
+        imagen_url || null,
+        modalidad || null,
+        patrones || null,
+        usuario_id,
+        tipo_delito || null,
+        fecha_caso || null,
+        victima || null,
+        victimario || null,
+        zona_territorial || null,
+        actores_involucrados || null,
+      ]
     );
 
     res.json(result.rows[0]);
@@ -73,11 +123,50 @@ router.get('/:id', verificarToken, async (req, res) => {
 router.put('/:id', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, descripcion, imagen_url, modalidad, patrones } = req.body;
+    const {
+      nombre,
+      descripcion,
+      imagen_url,
+      modalidad,
+      patrones,
+      tipo_delito,
+      fecha_caso,
+      victima,
+      victimario,
+      zona_territorial,
+      actores_involucrados,
+    } = req.body;
 
     const result = await pool.query(
-      'UPDATE carpetas SET nombre = $1, descripcion = $2, imagen_url = $3, modalidad = $4, patrones = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6 RETURNING *',
-      [nombre, descripcion, imagen_url, modalidad, patrones, id]
+      `UPDATE carpetas
+       SET nombre = $1,
+           descripcion = $2,
+           imagen_url = $3,
+           modalidad = $4,
+           patrones = $5,
+           tipo_delito = $6,
+           fecha_caso = $7,
+           victima = $8,
+           victimario = $9,
+           zona_territorial = $10,
+           actores_involucrados = $11,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $12
+       RETURNING *`,
+      [
+        nombre,
+        descripcion,
+        imagen_url,
+        modalidad,
+        patrones,
+        tipo_delito || null,
+        fecha_caso || null,
+        victima || null,
+        victimario || null,
+        zona_territorial || null,
+        actores_involucrados || null,
+        id,
+      ]
     );
 
     if (result.rows.length === 0) {

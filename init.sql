@@ -34,6 +34,12 @@ CREATE TABLE carpetas (
   imagen_url TEXT,
   modalidad VARCHAR(100),
   patrones VARCHAR(500),
+  tipo_delito VARCHAR(150),
+  fecha_caso DATE,
+  victima TEXT,
+  victimario TEXT,
+  zona_territorial VARCHAR(180),
+  actores_involucrados TEXT,
   es_aislado BOOLEAN DEFAULT FALSE,
   created_by UUID NOT NULL REFERENCES usuarios(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -68,8 +74,7 @@ CREATE TABLE conexiones (
 -- Tabla de Grupos de Asociación
 CREATE TABLE grupos_asociacion (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  nombre VARCHAR(200) NOT NULL,
-  justificacion_general TEXT NOT NULL,
+  nombre VARCHAR(200) NOT NULL,  patron_criminal VARCHAR(255) DEFAULT '',  justificacion_general TEXT NOT NULL,
   created_by UUID NOT NULL REFERENCES usuarios(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

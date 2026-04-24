@@ -40,6 +40,12 @@ function DashboardAdmin() {
     nombre: '',
     descripcion: '',
     imagen_url: '',
+    tipo_delito: '',
+    fecha_caso: '',
+    victima: '',
+    victimario: '',
+    zona_territorial: '',
+    actores_involucrados: '',
     documentos: [{ ...EMPTY_DOCUMENT }],
   });
 
@@ -111,6 +117,12 @@ function DashboardAdmin() {
       nombre: '',
       descripcion: '',
       imagen_url: '',
+      tipo_delito: '',
+      fecha_caso: '',
+      victima: '',
+      victimario: '',
+      zona_territorial: '',
+      actores_involucrados: '',
       documentos: [{ ...EMPTY_DOCUMENT }],
     });
     setIsEditMode(false);
@@ -150,6 +162,14 @@ function DashboardAdmin() {
         nombre: carpeta.nombre || '',
         descripcion: carpeta.descripcion || '',
         imagen_url: carpeta.imagen_url || '',
+        tipo_delito: carpeta.tipo_delito || '',
+        fecha_caso: carpeta.fecha_caso ? String(carpeta.fecha_caso).slice(0, 10) : '',
+        victima: carpeta.victima || '',
+        victimario: carpeta.victimario || '',
+        zona_territorial: carpeta.zona_territorial || '',
+        actores_involucrados: Array.isArray(carpeta.actores_involucrados)
+          ? carpeta.actores_involucrados.join(', ')
+          : (carpeta.actores_involucrados || ''),
         documentos,
       });
       setSelectedCaseId(carpeta.id);
@@ -330,6 +350,12 @@ function DashboardAdmin() {
             nombre: modalData.nombre,
             descripcion: modalData.descripcion,
             imagen_url: modalData.imagen_url,
+            tipo_delito: modalData.tipo_delito,
+            fecha_caso: modalData.fecha_caso || null,
+            victima: modalData.victima,
+            victimario: modalData.victimario,
+            zona_territorial: modalData.zona_territorial,
+            actores_involucrados: modalData.actores_involucrados,
           },
           {
             headers: authHeaders,
@@ -342,6 +368,12 @@ function DashboardAdmin() {
             nombre: modalData.nombre,
             descripcion: modalData.descripcion,
             imagen_url: modalData.imagen_url,
+            tipo_delito: modalData.tipo_delito,
+            fecha_caso: modalData.fecha_caso || null,
+            victima: modalData.victima,
+            victimario: modalData.victimario,
+            zona_territorial: modalData.zona_territorial,
+            actores_involucrados: modalData.actores_involucrados,
             usuario_id: usuario.id,
           },
           {
@@ -670,6 +702,80 @@ function DashboardAdmin() {
                     rows="3"
                     className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Tipo de delito
+                    </label>
+                    <input
+                      type="text"
+                      value={modalData.tipo_delito}
+                      onChange={(event) => setModalData((current) => ({ ...current, tipo_delito: event.target.value }))}
+                      placeholder="Ej: Concierto para delinquir"
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Fecha del caso
+                    </label>
+                    <input
+                      type="date"
+                      value={modalData.fecha_caso}
+                      onChange={(event) => setModalData((current) => ({ ...current, fecha_caso: event.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Victima
+                    </label>
+                    <input
+                      type="text"
+                      value={modalData.victima}
+                      onChange={(event) => setModalData((current) => ({ ...current, victima: event.target.value }))}
+                      placeholder="Persona natural o juridica"
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Victimario
+                    </label>
+                    <input
+                      type="text"
+                      value={modalData.victimario}
+                      onChange={(event) => setModalData((current) => ({ ...current, victimario: event.target.value }))}
+                      placeholder="Indiciado, imputado o estructura"
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Zona territorial
+                    </label>
+                    <input
+                      type="text"
+                      value={modalData.zona_territorial}
+                      onChange={(event) => setModalData((current) => ({ ...current, zona_territorial: event.target.value }))}
+                      placeholder="Municipio, seccional o region"
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">
+                      Actores involucrados
+                    </label>
+                    <input
+                      type="text"
+                      value={modalData.actores_involucrados}
+                      onChange={(event) => setModalData((current) => ({ ...current, actores_involucrados: event.target.value }))}
+                      placeholder="Separados por coma, ej: FGN, CTI, SIJIN"
+                      className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
+                    />
+                  </div>
                 </div>
 
                 <div>

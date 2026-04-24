@@ -15,6 +15,7 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
 
   const [groupForm, setGroupForm] = useState({
     nombre: '',
+    patron_criminal: '',
     justificacion_general: '',
   });
   const [selectedCaseIds, setSelectedCaseIds] = useState([]);
@@ -148,7 +149,7 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
   };
 
   const resetForm = () => {
-    setGroupForm({ nombre: '', justificacion_general: '' });
+    setGroupForm({ nombre: '', patron_criminal: '', justificacion_general: '' });
     setSelectedCaseIds([]);
     setPairJustifications({});
     setPairTypes({});
@@ -166,6 +167,11 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
 
     if (groupForm.nombre.trim().length < 3) {
       setError('El nombre del grupo debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    if (!groupForm.patron_criminal || groupForm.patron_criminal.trim() === '') {
+      setError('Debe seleccionar o indicar el patrón criminal principal.');
       return;
     }
 
@@ -194,6 +200,7 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
     try {
       const payload = {
         nombre: groupForm.nombre.trim(),
+        patron_criminal: groupForm.patron_criminal.trim(),
         justificacion_general: groupForm.justificacion_general.trim(),
         usuario_id: usuario.id,
         casos: selectedCaseIds.map((caseId) => ({ carpeta_id: caseId })),
@@ -300,7 +307,27 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
               />
             </div>
 
-            <div>
+            <div className="mt-4">
+              <label className="block text-xs font-semibold uppercase tracking-[0.25em] text-slate-300">
+                Patrón criminal principal / Ideario delictivo
+              </label>
+              <select
+                value={groupForm.patron_criminal}
+                onChange={(event) => setGroupForm((current) => ({ ...current, patron_criminal: event.target.value }))}
+                className="mt-2 w-full rounded-lg border border-cyan-500/20 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 outline-none focus:border-cyan-300"
+              >
+                <option value="">-- Selecciona el patrón criminal --</option>
+                <option value="Mismo modus operandi">Mismo modus operandi</option>
+                <option value="Reclutamiento">Reclutamiento</option>
+                <option value="Lavado de activos">Lavado de activos</option>
+                <option value="Falsificación documental">Falsificación documental</option>
+                <option value="Extorsión sistemática">Extorsión sistemática</option>
+                <option value="Concierto para delinquir">Concierto para delinquir</option>
+                <option value="Múltiples factores asociados">Múltiples factores asociados</option>
+              </select>
+            </div>
+
+            <div className="mt-4">
               <label className="block text-xs font-semibold uppercase tracking-[0.25em] text-slate-300">
                 Justificación general del grupo
               </label>
@@ -465,7 +492,12 @@ function AssociationGroupsPage({ token, usuario, onBack }) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-sm font-semibold text-slate-100">{group.nombre}</p>
-                      <p className="mt-1 text-xs text-slate-400">{group.justificacion_general}</p>
+                      {group.patron_criminal && (
+                        <p className="mt-1 max-w-fit rounded border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[0.65rem] font-semibold text-purple-300 uppercase tracking-wider">
+                          Patrón / Ideario: {group.patron_criminal}
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs text-slate-400">{group.justificacion_general}</p>
                     </div>
                     <button
                       type="button"

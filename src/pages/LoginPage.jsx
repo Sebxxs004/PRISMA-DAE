@@ -95,10 +95,6 @@ function LoginPage() {
             </button>
           </form>
 
-          <div className="text-center text-xs text-slate-400">
-            <p>Demo: admin@prisma.dae / admin123</p>
-            <p>Demo: investigador@prisma.dae / investigador123</p>
-          </div>
         </div>
 
         <div className="space-y-3">

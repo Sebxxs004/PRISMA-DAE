@@ -21,6 +21,7 @@ router.get('/', verificarToken, async (_req, res) => {
       SELECT
         ga.id,
         ga.nombre,
+        ga.patron_criminal,
         ga.justificacion_general,
         ga.created_at,
         u.nombre AS created_by_nombre,
@@ -52,6 +53,7 @@ router.get('/:id', verificarToken, async (req, res) => {
       SELECT
         ga.id,
         ga.nombre,
+        ga.patron_criminal,
         ga.justificacion_general,
         ga.created_at,
         u.nombre AS created_by_nombre
@@ -136,6 +138,7 @@ router.get('/caso/:carpeta_id', verificarToken, async (req, res) => {
       SELECT
         ga.id,
         ga.nombre,
+        ga.patron_criminal,
         ga.justificacion_general,
         ga.created_at,
         u.nombre AS created_by_nombre
@@ -164,17 +167,18 @@ router.post('/', verificarToken, async (req, res) => {
     const {
       nombre,
       justificacion_general,
+      patron_criminal,
       usuario_id,
       casos = [],
       relaciones = [],
       exclusiones = [],
     } = req.body;
 
-    if (!nombre || !justificacion_general || !usuario_id) {
+    if (!nombre || !justificacion_general || !usuario_id || !patron_criminal) {
       return res.status(400).json({
         error: 'Campos requeridos faltantes',
         valido: false,
-        razon: 'Debes indicar nombre del grupo, justificación general y usuario_id.',
+        razon: 'Debes indicar nombre del grupo, patron criminal, justificacion general y usuario_id.',
       });
     }
 
@@ -274,13 +278,16 @@ router.post('/', verificarToken, async (req, res) => {
     await client.query('BEGIN');
     transactionStarted = true;
 
+    // Asegurarse de que la columna existe (si no se corrió migracion por CLI)
+    await client.query(`ALTER TABLE grupos_asociacion ADD COLUMN IF NOT EXISTS patron_criminal VARCHAR(255) DEFAULT '';`);
+
     const grupoResult = await client.query(
       `
-      INSERT INTO grupos_asociacion (nombre, justificacion_general, created_by)
-      VALUES ($1, $2, $3)
+      INSERT INTO grupos_asociacion (nombre, patron_criminal, justificacion_general, created_by)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
       `,
-      [nombre, justificacion_general, usuario_id]
+      [nombre, patron_criminal, justificacion_general, usuario_id]
     );
 
     const grupoId = grupoResult.rows[0].id;

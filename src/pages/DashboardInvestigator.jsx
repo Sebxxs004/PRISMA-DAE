@@ -2,15 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import {
+  FiAlertTriangle,
+  FiCalendar,
   FiCheckCircle,
   FiClock,
   FiDownload,
   FiFileText,
   FiFolder,
   FiLink,
+  FiMapPin,
   FiPlay,
   FiSave,
+  FiShield,
   FiTarget,
+  FiUsers,
   FiXCircle,
 } from 'react-icons/fi';
 import useAuthStore from '../store/useAuthStore';
@@ -19,69 +24,30 @@ const API_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : (import.meta
 const TICK_MS = 50;
 const NODE_RADIUS = 34;
 const GROUP_COLOR_PALETTE = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#f97316'];
+const ACTOR_BADGE_COLORS = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#f97316'];
+const CONNECTION_TYPE_OPTIONS = [
+  { value: 'subjetiva', label: 'Conexidad subjetiva' },
+  { value: 'objetiva', label: 'Conexidad objetiva' },
+  { value: 'instrumental', label: 'Conexidad instrumental' },
+];
 
-function getPairKey(a, b) {
-  const first = String(a);
-  const second = String(b);
-  return first.localeCompare(second) <= 0 ? `${first}__${second}` : `${second}__${first}`;
-}
-
-function formatSeconds(totalSeconds) {
-  const safe = Math.max(0, totalSeconds);
-  const hours = Math.floor(safe / 3600)
-    .toString()
-    .padStart(2, '0');
-  const minutes = Math.floor((safe % 3600) / 60)
-    .toString()
-    .padStart(2, '0');
-  const seconds = Math.floor(safe % 60)
-    .toString()
-    .padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
-}
-
-function buildComponents(nodeIds, edges) {
-  const adjacency = new Map();
-  nodeIds.forEach((id) => adjacency.set(id, new Set()));
-
-  edges.forEach(({ a, b }) => {
-    if (!adjacency.has(a) || !adjacency.has(b)) {
-      return;
-    }
-    adjacency.get(a).add(b);
-    adjacency.get(b).add(a);
-  });
-
-  const visited = new Set();
-  const components = [];
-
-  nodeIds.forEach((startId) => {
-    if (visited.has(startId)) {
-      return;
-    }
-    const queue = [startId];
-    const current = [];
-    visited.add(startId);
-
-    while (queue.length > 0) {
-      const currentId = queue.shift();
-      current.push(currentId);
-      adjacency.get(currentId).forEach((neighbor) => {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
-          queue.push(neighbor);
-        }
-      });
-    }
-
-    if (current.length > 1) {
-      current.sort((a, b) => String(a).localeCompare(String(b)));
-      components.push(current);
-    }
-  });
-
-  return components.sort((a, b) => a.length - b.length);
-}
+const CASE_METADATA_FALLBACKS = [
+  {
+    offenseType: 'Concierto para delinquir',
+    zone: 'Area Metropolitana',
+    actors: ['FGN', 'CTI'],
+  },
+  {
+    offenseType: 'Extorsion',
+    zone: 'Zona Urbana',
+    actors: ['SIJIN', 'Policia Judicial'],
+  },
+  {
+    offenseType: 'Lavado de activos',
+    zone: 'Corredor financiero',
+    actors: ['UIAF', 'Fiscalia Seccional'],
+  },
+];
 
 function isPdfUrl(value) {
   if (!value) return false;
@@ -112,6 +78,72 @@ function connectPairSet(pairIds) {
   return pairs;
 }
 
+function getPairKey(a, b) {
+  const first = String(a);
+  const second = String(b);
+  return first.localeCompare(second) <= 0 ? `${first}__${second}` : `${second}__${first}`;
+}
+
+function buildComponents(nodeIds, edges) {
+  const adjacency = new Map();
+  nodeIds.forEach((id) => adjacency.set(id, new Set()));
+
+  edges.forEach(({ a, b }) => {
+    if (!adjacency.has(a) || !adjacency.has(b)) {
+      return;
+    }
+
+    adjacency.get(a).add(b);
+    adjacency.get(b).add(a);
+  });
+
+  const visited = new Set();
+  const components = [];
+
+  nodeIds.forEach((startId) => {
+    if (visited.has(startId)) {
+      return;
+    }
+
+    const queue = [startId];
+    const current = [];
+    visited.add(startId);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      current.push(currentId);
+      adjacency.get(currentId).forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      });
+    }
+
+    if (current.length > 1) {
+      current.sort((a, b) => String(a).localeCompare(String(b)));
+      components.push(current);
+    }
+  });
+
+  return components.sort((a, b) => a.length - b.length);
+}
+
+function formatSeconds(totalSeconds) {
+  const safe = Math.max(0, totalSeconds);
+  const hours = Math.floor(safe / 3600)
+    .toString()
+    .padStart(2, '0');
+  const minutes = Math.floor((safe % 3600) / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = Math.floor(safe % 60)
+    .toString()
+    .padStart(2, '0');
+
+  return `${hours}:${minutes}:${seconds}`;
+}
+
 function getDefaultGroupColor(index) {
   return GROUP_COLOR_PALETTE[index % GROUP_COLOR_PALETTE.length];
 }
@@ -136,8 +168,155 @@ function formatPairLabel(pairKey, nameById) {
   return `${nameA} - ${nameB}`;
 }
 
+function firstDefinedValue(...values) {
+  const found = values.find((value) => value !== null && value !== undefined && String(value).trim() !== '');
+  return found === undefined ? null : found;
+}
+
+function normalizeActors(rawValue) {
+  if (Array.isArray(rawValue)) {
+    return rawValue.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (typeof rawValue === 'string') {
+    return rawValue
+      .split(/[,;|]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function formatCaseDate(dateValue) {
+  if (!dateValue) {
+    return 'Sin fecha';
+  }
+
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(dateValue);
+  }
+
+  return parsed.toLocaleDateString('es-CO');
+}
+
+function buildCaseMetadata(caseItem, index) {
+  const fallback = CASE_METADATA_FALLBACKS[index % CASE_METADATA_FALLBACKS.length];
+
+  const offenseType =
+    firstDefinedValue(caseItem.tipo_delito, caseItem.delito, caseItem.tipo, caseItem.categoria_delito) ||
+    fallback.offenseType;
+  const caseDate =
+    firstDefinedValue(caseItem.fecha_hecho, caseItem.fecha, caseItem.fecha_caso, caseItem.created_at) || null;
+  const victim = firstDefinedValue(caseItem.victima, caseItem.victimas, caseItem.perfil_victima) || 'Sin registrar';
+  const offender =
+    firstDefinedValue(caseItem.victimario, caseItem.victimarios, caseItem.indiciado, caseItem.imputado) ||
+    'Sin registrar';
+  const zone =
+    firstDefinedValue(caseItem.zona_territorial, caseItem.territorio, caseItem.zona, caseItem.municipio) ||
+    fallback.zone;
+
+  const actors = normalizeActors(firstDefinedValue(caseItem.actores_involucrados, caseItem.actores, caseItem.equipo));
+  const finalActors = actors.length > 0 ? actors : fallback.actors;
+
+  return {
+    offenseType: String(offenseType),
+    caseDate,
+    caseDateLabel: formatCaseDate(caseDate),
+    victim: String(victim),
+    offender: String(offender),
+    zone: String(zone),
+    actors: finalActors,
+    offenseTag: String(offenseType).slice(0, 1).toUpperCase() || 'C',
+  };
+}
+
+function buildGroupSnapshot(group, currentConnections, caseNameById, caseMetadataById) {
+  const memberIds = [...group.ids];
+  const memberSet = new Set(memberIds);
+  const nodePositions = new Map(group.nodes.map((node) => [node.id, node]));
+
+  const nodes = memberIds.map((nodeId) => {
+    const metadata = caseMetadataById.get(nodeId);
+    const fallbackName = caseNameById.get(String(nodeId)) || String(nodeId);
+    const position = nodePositions.get(nodeId) || { x: 0, y: 0 };
+
+    return {
+      id: nodeId,
+      name: fallbackName,
+      offenseType: metadata?.offenseType || 'Sin delito',
+      caseDateLabel: metadata?.caseDateLabel || 'Sin fecha',
+      zone: metadata?.zone || 'Sin zona',
+      x: position.x,
+      y: position.y,
+    };
+  });
+
+  const connections = currentConnections
+    .filter((edge) => memberSet.has(edge.a) && memberSet.has(edge.b))
+    .map((edge) => ({
+      key: getPairKey(edge.a, edge.b),
+      sourceId: edge.a,
+      targetId: edge.b,
+      sourceName: caseNameById.get(String(edge.a)) || String(edge.a),
+      targetName: caseNameById.get(String(edge.b)) || String(edge.b),
+      connectionType: edge.connectionType || 'objetiva',
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  return {
+    finalizedAt: Date.now(),
+    groupName: group.name,
+    relationType: group.relationType,
+    color: group.color,
+    nodes,
+    cases: nodes,
+    connections,
+  };
+}
+
+function buildCompactGraphLayout(nodes, width = 320, height = 150) {
+  if (!nodes.length) {
+    return { nodes: [], width, height };
+  }
+
+  const xs = nodes.map((node) => node.x);
+  const ys = nodes.map((node) => node.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const padding = 18;
+
+  return {
+    width,
+    height,
+    nodes: nodes.map((node) => ({
+      ...node,
+      x: padding + ((node.x - minX) / spanX) * Math.max(1, width - padding * 2),
+      y: padding + ((node.y - minY) / spanY) * Math.max(1, height - padding * 2),
+    })),
+  };
+}
+
+function getConnectionVisual(type) {
+  if (type === 'subjetiva') {
+    return { stroke: '#f59e0b', dashArray: undefined, label: 'Subjetiva' };
+  }
+
+  if (type === 'instrumental') {
+    return { stroke: '#22c55e', dashArray: '7 5', label: 'Instrumental' };
+  }
+
+  return { stroke: '#38bdf8', dashArray: undefined, label: 'Objetiva' };
+}
+
 function DashboardInvestigator({ token }) {
   const boardRef = useRef(null);
+  const groupedRegionsRef = useRef([]);
   const { usuario, logout } = useAuthStore();
 
   const [carpetas, setCarpetas] = useState([]);
@@ -152,6 +331,8 @@ function DashboardInvestigator({ token }) {
   const [velocities, setVelocities] = useState({});
   const [connections, setConnections] = useState([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
+  const [finalizedGroups, setFinalizedGroups] = useState({});
+  const [selectedConnectionType, setSelectedConnectionType] = useState('objetiva');
 
   const [startTimestamp, setStartTimestamp] = useState(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -169,18 +350,6 @@ function DashboardInvestigator({ token }) {
   const [error, setError] = useState('');
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
-
-  useEffect(() => {
-    if (investigationFinished || validationResult) {
-      return undefined;
-    }
-
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTimestamp) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [startTimestamp, investigationFinished, validationResult]);
 
   useEffect(() => {
     let cancelled = false;
@@ -271,10 +440,37 @@ function DashboardInvestigator({ token }) {
     };
   }, [selectedCaseId, authHeaders, documentsByCase]);
 
+  const finalizedNodeIds = useMemo(() => {
+    const ids = new Set();
+    Object.values(finalizedGroups).forEach((group) => {
+      (group.nodes || group.cases || []).forEach((node) => {
+        ids.add(String(node.id));
+      });
+    });
+    return ids;
+  }, [finalizedGroups]);
+
+  const activeNodes = useMemo(() => nodes.filter((node) => !finalizedNodeIds.has(String(node.id))), [nodes, finalizedNodeIds]);
+
+  const activeConnections = useMemo(
+    () => connections.filter((edge) => !finalizedNodeIds.has(String(edge.a)) && !finalizedNodeIds.has(String(edge.b))),
+    [connections, finalizedNodeIds]
+  );
+
+  const activeNodeById = useMemo(() => {
+    const map = new Map();
+    activeNodes.forEach((node) => map.set(node.id, node));
+    return map;
+  }, [activeNodes]);
+
+  const activeNodeIds = useMemo(() => activeNodes.map((node) => node.id), [activeNodes]);
+
   useEffect(() => {
-    if (investigationFinished || nodes.length < 2) {
+    if (investigationFinished || activeNodes.length < 2) {
       return undefined;
     }
+
+    const activeNodeIdSet = new Set(activeNodeIds.map((nodeId) => String(nodeId)));
 
     const interval = setInterval(() => {
       const board = boardRef.current;
@@ -286,10 +482,45 @@ function DashboardInvestigator({ token }) {
       const maxY = boardHeight - NODE_RADIUS;
       const minDistance = NODE_RADIUS * 2;
       const nextVelocities = { ...velocities };
+      const protectedRegions = groupedRegionsRef.current;
+      const regionByNodeId = new Map();
+
+      protectedRegions.forEach((region) => {
+        region.ids.forEach((nodeId) => {
+          regionByNodeId.set(nodeId, region);
+        });
+      });
+
+      const getRegionVelocity = (region, fallbackNodeId) => {
+        if (!region || region.ids.length <= 1) {
+          return nextVelocities[fallbackNodeId] || { vx: 1, vy: 1 };
+        }
+
+        const sharedVelocity = region.ids.reduce(
+          (accumulator, nodeId) => {
+            const speed = nextVelocities[nodeId] || { vx: 1, vy: 1 };
+            return {
+              vx: accumulator.vx + speed.vx,
+              vy: accumulator.vy + speed.vy,
+            };
+          },
+          { vx: 0, vy: 0 }
+        );
+
+        return {
+          vx: sharedVelocity.vx / region.ids.length,
+          vy: sharedVelocity.vy / region.ids.length,
+        };
+      };
 
       setNodes((currentNodes) => {
         const movedNodes = currentNodes.map((node) => {
-          const speed = nextVelocities[node.id] || { vx: 1, vy: 1 };
+          if (!activeNodeIdSet.has(String(node.id))) {
+            return node;
+          }
+
+          const region = regionByNodeId.get(node.id);
+          const speed = getRegionVelocity(region, node.id);
           let nextX = node.x + speed.vx;
           let nextY = node.y + speed.vy;
           let vx = speed.vx;
@@ -304,6 +535,43 @@ function DashboardInvestigator({ token }) {
             nextY = Math.min(Math.max(minY, nextY), maxY);
           }
 
+          for (let regionIndex = 0; regionIndex < protectedRegions.length; regionIndex += 1) {
+            const region = protectedRegions[regionIndex];
+            if (region.ids.includes(node.id)) {
+              continue;
+            }
+
+            const regionLeft = region.x;
+            const regionRight = region.x + region.width;
+            const regionTop = region.y;
+            const regionBottom = region.y + region.height;
+            const insideRegion = nextX > regionLeft && nextX < regionRight && nextY > regionTop && nextY < regionBottom;
+
+            if (!insideRegion) {
+              continue;
+            }
+
+            const distLeft = Math.abs(nextX - regionLeft);
+            const distRight = Math.abs(regionRight - nextX);
+            const distTop = Math.abs(nextY - regionTop);
+            const distBottom = Math.abs(regionBottom - nextY);
+            const nearest = Math.min(distLeft, distRight, distTop, distBottom);
+
+            if (nearest === distLeft) {
+              nextX = Math.max(minX, regionLeft - 1);
+              vx = -Math.abs(vx);
+            } else if (nearest === distRight) {
+              nextX = Math.min(maxX, regionRight + 1);
+              vx = Math.abs(vx);
+            } else if (nearest === distTop) {
+              nextY = Math.max(minY, regionTop - 1);
+              vy = -Math.abs(vy);
+            } else {
+              nextY = Math.min(maxY, regionBottom + 1);
+              vy = Math.abs(vy);
+            }
+          }
+
           nextVelocities[node.id] = { vx, vy };
 
           return {
@@ -313,10 +581,48 @@ function DashboardInvestigator({ token }) {
           };
         });
 
+        const pushRegion = (region, deltaX, deltaY, resolvedVelocities) => {
+          if (!region) {
+            return;
+          }
+
+          region.ids.forEach((nodeId) => {
+            if (!activeNodeIdSet.has(String(nodeId))) {
+              return;
+            }
+
+            const node = movedNodes.find((item) => item.id === nodeId);
+            if (!node) {
+              return;
+            }
+
+            node.x = Math.min(Math.max(minX, node.x + deltaX), maxX);
+            node.y = Math.min(Math.max(minY, node.y + deltaY), maxY);
+          });
+
+          region.ids.forEach((nodeId) => {
+            if (!activeNodeIdSet.has(String(nodeId))) {
+              return;
+            }
+
+            const currentVelocity = resolvedVelocities[nodeId] || { vx: 1, vy: 1 };
+            resolvedVelocities[nodeId] = {
+              vx: deltaX !== 0 ? -currentVelocity.vx : currentVelocity.vx,
+              vy: deltaY !== 0 ? -currentVelocity.vy : currentVelocity.vy,
+            };
+          });
+        };
+
         for (let i = 0; i < movedNodes.length; i += 1) {
           for (let j = i + 1; j < movedNodes.length; j += 1) {
             const firstNode = movedNodes[i];
             const secondNode = movedNodes[j];
+            const firstRegion = regionByNodeId.get(firstNode.id);
+            const secondRegion = regionByNodeId.get(secondNode.id);
+
+            if (firstRegion && secondRegion && firstRegion.key === secondRegion.key) {
+              continue;
+            }
 
             let dx = secondNode.x - firstNode.x;
             let dy = secondNode.y - firstNode.y;
@@ -361,6 +667,42 @@ function DashboardInvestigator({ token }) {
           }
         }
 
+        for (let i = 0; i < protectedRegions.length; i += 1) {
+          for (let j = i + 1; j < protectedRegions.length; j += 1) {
+            const firstRegion = protectedRegions[i];
+            const secondRegion = protectedRegions[j];
+
+            const firstLeft = firstRegion.x;
+            const firstRight = firstRegion.x + firstRegion.width;
+            const firstTop = firstRegion.y;
+            const firstBottom = firstRegion.y + firstRegion.height;
+
+            const secondLeft = secondRegion.x;
+            const secondRight = secondRegion.x + secondRegion.width;
+            const secondTop = secondRegion.y;
+            const secondBottom = secondRegion.y + secondRegion.height;
+
+            const overlapX = Math.min(firstRight, secondRight) - Math.max(firstLeft, secondLeft);
+            const overlapY = Math.min(firstBottom, secondBottom) - Math.max(firstTop, secondTop);
+
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+
+            if (overlapX < overlapY) {
+              const shiftX = overlapX / 2 + 1;
+              const direction = firstLeft <= secondLeft ? -1 : 1;
+              pushRegion(firstRegion, direction * shiftX, 0, nextVelocities);
+              pushRegion(secondRegion, -direction * shiftX, 0, nextVelocities);
+            } else {
+              const shiftY = overlapY / 2 + 1;
+              const direction = firstTop <= secondTop ? -1 : 1;
+              pushRegion(firstRegion, 0, direction * shiftY, nextVelocities);
+              pushRegion(secondRegion, 0, -direction * shiftY, nextVelocities);
+            }
+          }
+        }
+
         setVelocities(nextVelocities);
 
         return movedNodes;
@@ -368,7 +710,7 @@ function DashboardInvestigator({ token }) {
     }, TICK_MS);
 
     return () => clearInterval(interval);
-  }, [velocities, nodes.length, investigationFinished]);
+  }, [velocities, activeNodes.length, activeNodeIds, investigationFinished]);
 
   const selectedCase = useMemo(
     () => carpetas.find((caseItem) => caseItem.id === selectedCaseId) || null,
@@ -391,11 +733,22 @@ function DashboardInvestigator({ token }) {
     [documentsByCase, selectedCaseId]
   );
 
-  const nodeById = useMemo(() => {
+  const caseMetadataById = useMemo(() => {
     const map = new Map();
-    nodes.forEach((node) => map.set(node.id, node));
+    carpetas.forEach((caseItem, index) => {
+      map.set(caseItem.id, buildCaseMetadata(caseItem, index));
+    });
     return map;
-  }, [nodes]);
+  }, [carpetas]);
+
+  const selectedCaseMetadata = useMemo(() => {
+    if (!selectedCase) {
+      return null;
+    }
+    return caseMetadataById.get(selectedCase.id) || null;
+  }, [selectedCase, caseMetadataById]);
+
+
 
   const caseNameById = useMemo(() => {
     const map = new Map();
@@ -471,17 +824,14 @@ function DashboardInvestigator({ token }) {
     };
   }, [authHeaders]);
 
-  const components = useMemo(
-    () => buildComponents(nodes.map((node) => node.id), connections),
-    [nodes, connections]
-  );
+  const components = useMemo(() => buildComponents(activeNodeIds, activeConnections), [activeNodeIds, activeConnections]);
 
   const groupedRegions = useMemo(() => {
     return components.map((component) => {
       const key = component.join('__');
       const meta = groupMeta[key];
       const componentNodes = component
-        .map((nodeId) => nodeById.get(nodeId))
+        .map((nodeId) => activeNodeById.get(nodeId))
         .filter(Boolean);
 
       const xs = componentNodes.map((node) => node.x);
@@ -500,24 +850,33 @@ function DashboardInvestigator({ token }) {
         height: Math.max(120, maxY - minY),
         color: meta?.color || getDefaultGroupColor(component[0]?.length ? component.length - 1 : 0),
         name: meta?.name || `Grupo ${component.length}`,
+        patronCriminal: meta?.patronCriminal || '',
       };
     });
-  }, [components, groupMeta, nodeById]);
+  }, [components, groupMeta, activeNodeById]);
+  useEffect(() => {
+    groupedRegionsRef.current = groupedRegions;
+  }, [groupedRegions]);
 
   const componentsWithMeta = useMemo(() => {
     return components.map((component, index) => {
       const key = component.join('__');
+      const componentNodes = component
+        .map((nodeId) => activeNodeById.get(nodeId))
+        .filter(Boolean);
+
       return {
         key,
         ids: component,
+        nodes: componentNodes,
         index,
         color: groupMeta[key]?.color || getDefaultGroupColor(index),
         name: groupMeta[key]?.name || `Grupo ${index + 1}`,
         relationType: groupMeta[key]?.relationType || 'modalidad',
+        patronCriminal: groupMeta[key]?.patronCriminal || '',
       };
     });
-  }, [components, groupMeta]);
-
+  }, [components, groupMeta, activeNodeById]);
   useEffect(() => {
     if (componentsWithMeta.length === 0) {
       return;
@@ -531,6 +890,7 @@ function DashboardInvestigator({ token }) {
           next[component.key] = {
             name: `Grupo ${component.index + 1}`,
             relationType: 'modalidad',
+            patronCriminal: '',
             color: component.color,
           };
           changed = true;
@@ -562,7 +922,7 @@ function DashboardInvestigator({ token }) {
     if (nextSelection.length >= 2) {
       const candidateEdges =
         nextSelection.length === 2
-          ? [{ a: nextSelection[0], b: nextSelection[1] }]
+          ? [{ a: nextSelection[0], b: nextSelection[1], connectionType: selectedConnectionType }]
           : connectPairSet(nextSelection);
 
       const newEdges = candidateEdges.filter((edge) => {
@@ -571,7 +931,11 @@ function DashboardInvestigator({ token }) {
       });
 
       if (newEdges.length > 0) {
-        setConnections((current) => [...current, ...newEdges]);
+        const normalizedEdges = newEdges.map((edge) => ({
+          ...edge,
+          connectionType: edge.connectionType || selectedConnectionType,
+        }));
+        setConnections((current) => [...current, ...normalizedEdges]);
       }
 
       if (nextSelection.length === 3) {
@@ -580,11 +944,132 @@ function DashboardInvestigator({ token }) {
     }
   };
 
+  const updateConnectionType = (edgeKey, connectionType) => {
+    if (investigationFinished || validationResult) {
+      return;
+    }
+
+    setConnections((current) =>
+      current.map((edge) =>
+        getPairKey(edge.a, edge.b) === edgeKey
+          ? { ...edge, connectionType }
+          : edge
+      )
+    );
+  };
+
   const removeConnection = (edgeKey) => {
     if (investigationFinished || validationResult) {
       return;
     }
-    setConnections((current) => current.filter((edge) => getPairKey(edge.a, edge.b) !== edgeKey));
+
+    const [nodeAId, nodeBId] = String(edgeKey).split('__');
+
+    setConnections((current) => {
+      const nextConnections = current.filter((edge) => getPairKey(edge.a, edge.b) !== edgeKey);
+      const nextComponents = buildComponents(activeNodeIds, nextConnections);
+      const affectedComponents = nextComponents.filter((component) => component.includes(nodeAId) || component.includes(nodeBId));
+
+      if (affectedComponents.length >= 2) {
+        const nodePositions = new Map(activeNodes.map((node) => [node.id, node]));
+        const endpointA = nodePositions.get(nodeAId);
+        const endpointB = nodePositions.get(nodeBId);
+
+        if (endpointA && endpointB) {
+          const midpointX = (endpointA.x + endpointB.x) / 2;
+          const midpointY = (endpointA.y + endpointB.y) / 2;
+          const releaseDistance = NODE_RADIUS * 1.2;
+
+          setNodes((currentNodes) => {
+            return currentNodes.map((node) => {
+              const component = affectedComponents.find((item) => item.includes(node.id));
+              if (!component) {
+                return node;
+              }
+
+              const componentNodes = component
+                .map((nodeId) => nodePositions.get(nodeId))
+                .filter(Boolean);
+
+              const centroid = componentNodes.reduce(
+                (accumulator, currentNode) => ({
+                  x: accumulator.x + currentNode.x,
+                  y: accumulator.y + currentNode.y,
+                }),
+                { x: 0, y: 0 }
+              );
+
+              const centerX = centroid.x / Math.max(1, componentNodes.length);
+              const centerY = centroid.y / Math.max(1, componentNodes.length);
+              let directionX = centerX - midpointX;
+              let directionY = centerY - midpointY;
+              let distance = Math.hypot(directionX, directionY);
+
+              if (distance < 0.001) {
+                directionX = node.id === nodeAId ? -1 : 1;
+                directionY = node.id === nodeAId ? -0.25 : 0.25;
+                distance = Math.hypot(directionX, directionY);
+              }
+
+              const normalizedX = directionX / distance;
+              const normalizedY = directionY / distance;
+
+              return {
+                ...node,
+                x: Math.min(Math.max(NODE_RADIUS, node.x + normalizedX * releaseDistance), Math.max(NODE_RADIUS, (boardRef.current?.clientWidth || 980) - NODE_RADIUS)),
+                y: Math.min(Math.max(NODE_RADIUS, node.y + normalizedY * releaseDistance), Math.max(NODE_RADIUS, (boardRef.current?.clientHeight || 600) - NODE_RADIUS)),
+              };
+            });
+          });
+
+          setVelocities((currentVelocities) => {
+            const nextVelocities = { ...currentVelocities };
+
+            affectedComponents.forEach((component) => {
+              const componentNodes = component
+                .map((nodeId) => nodePositions.get(nodeId))
+                .filter(Boolean);
+
+              const centroid = componentNodes.reduce(
+                (accumulator, currentNode) => ({
+                  x: accumulator.x + currentNode.x,
+                  y: accumulator.y + currentNode.y,
+                }),
+                { x: 0, y: 0 }
+              );
+
+              const centerX = centroid.x / Math.max(1, componentNodes.length);
+              const centerY = centroid.y / Math.max(1, componentNodes.length);
+              let directionX = centerX - midpointX;
+              let directionY = centerY - midpointY;
+              let distance = Math.hypot(directionX, directionY);
+
+              if (distance < 0.001) {
+                directionX = component.includes(nodeAId) ? -1 : 1;
+                directionY = component.includes(nodeAId) ? -0.25 : 0.25;
+                distance = Math.hypot(directionX, directionY);
+              }
+
+              const normalizedX = directionX / distance;
+              const normalizedY = directionY / distance;
+
+              component.forEach((nodeId) => {
+                nextVelocities[nodeId] = {
+                  vx: normalizedX * 1.25,
+                  vy: normalizedY * 1.25,
+                };
+              });
+            });
+
+            return nextVelocities;
+          });
+        }
+      }
+
+      return nextConnections;
+    });
+
+    setSelectedNodeIds((current) => current.filter((nodeId) => nodeId !== nodeAId && nodeId !== nodeBId));
   };
 
   const updateGroupMeta = (groupKey, patch) => {
@@ -595,6 +1080,27 @@ function DashboardInvestigator({ token }) {
         ...patch,
       },
     }));
+  };
+
+  const finalizeGroup = (group) => {
+    setFinalizedGroups((current) => {
+      if (current[group.key]) {
+        return current;
+      }
+
+      const currentGroupNodes = group.nodes && group.nodes.length > 0 ? group.nodes : activeNodes.filter((node) => group.ids.includes(node.id));
+
+      return {
+        ...current,
+        [group.key]: buildGroupSnapshot(
+          { ...group, nodes: currentGroupNodes },
+          connections,
+          caseNameById,
+          caseMetadataById
+        ),
+      };
+    });
+    setSelectedNodeIds([]);
   };
 
   const getGroupColor = (groupKey, index = 0) => {
@@ -874,6 +1380,9 @@ function DashboardInvestigator({ token }) {
                 <p className="text-sm text-slate-400">Cargando carpetas...</p>
               ) : (
                 carpetas.map((caseItem) => (
+                  (() => {
+                    const metadata = caseMetadataById.get(caseItem.id);
+                    return (
                   <button
                     key={caseItem.id}
                     type="button"
@@ -892,7 +1401,23 @@ function DashboardInvestigator({ token }) {
                       {caseItem.nombre}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">{caseItem.cantidad_documentos || 0} documentos</p>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-300">
+                      <p className="flex items-center gap-1 truncate">
+                        <FiAlertTriangle size={10} className="text-amber-300" />
+                        {metadata?.offenseType || 'Sin delito'}
+                      </p>
+                      <p className="flex items-center gap-1 truncate">
+                        <FiCalendar size={10} className="text-cyan-300" />
+                        {metadata?.caseDateLabel || 'Sin fecha'}
+                      </p>
+                      <p className="col-span-2 flex items-center gap-1 truncate">
+                        <FiMapPin size={10} className="text-emerald-300" />
+                        {metadata?.zone || 'Sin zona'}
+                      </p>
+                    </div>
                   </button>
+                    );
+                  })()
                 ))
               )}
             </div>
@@ -906,6 +1431,21 @@ function DashboardInvestigator({ token }) {
               <p className="text-sm text-slate-300">
                 Conecta esferas para crear hipotesis investigativas. Cada componente conectado se convierte en un grupo.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-400">Tipo de conexidad para nuevas conexiones:</span>
+                <select
+                  value={selectedConnectionType}
+                  onChange={(event) => setSelectedConnectionType(event.target.value)}
+                  disabled={investigationFinished}
+                  className="rounded border border-slate-500/30 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
+                >
+                  {CONNECTION_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -971,16 +1511,39 @@ function DashboardInvestigator({ token }) {
                     >
                       {region.name.toUpperCase()}
                     </text>
+                    {region.patronCriminal && (
+                      <rect
+                        x={region.x + 18}
+                        y={region.y + 36}
+                        width={region.patronCriminal.length * 6 + 10}
+                        height="18"
+                        rx="4"
+                        fill={hexToRgba(region.color, 0.15)}
+                      />
+                    )}
+                    {region.patronCriminal && (
+                      <text
+                        x={region.x + 23}
+                        y={region.y + 49}
+                        fill={region.color}
+                        fontSize="10"
+                        fontWeight="600"
+                        letterSpacing="0.05em"
+                      >
+                        PATRÓN: {region.patronCriminal}
+                      </text>
+                    )}
                   </g>
                 ))}
 
-                {connections.map((edge) => {
-                  const source = nodeById.get(edge.a);
-                  const target = nodeById.get(edge.b);
+                {activeConnections.map((edge) => {
+                  const source = activeNodeById.get(edge.a);
+                  const target = activeNodeById.get(edge.b);
                   if (!source || !target) {
                     return null;
                   }
                   const pairKey = getPairKey(edge.a, edge.b);
+                  const visual = getConnectionVisual(edge.connectionType);
                   return (
                     <line
                       key={pairKey}
@@ -988,7 +1551,8 @@ function DashboardInvestigator({ token }) {
                       y1={source.y}
                       x2={target.x}
                       y2={target.y}
-                      stroke="#38bdf8"
+                      stroke={visual.stroke}
+                      strokeDasharray={visual.dashArray}
                       strokeWidth="2"
                       opacity="0.75"
                     />
@@ -996,11 +1560,15 @@ function DashboardInvestigator({ token }) {
                 })}
               </svg>
 
-              {nodes.map((node) => (
+              {activeNodes.map((node) => (
+                (() => {
+                  const metadata = caseMetadataById.get(node.id);
+                  return (
                 <button
                   key={node.id}
                   type="button"
                   onClick={() => onNodeClick(node.id)}
+                  title={`${metadata?.offenseType || 'Caso'} | ${metadata?.caseDateLabel || 'Sin fecha'} | ${metadata?.zone || 'Sin zona'}`}
                   className={`absolute flex h-[68px] w-[68px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border text-center text-[10px] font-semibold leading-tight transition ${
                     (() => {
                       const group = groupedRegions.find((region) => region.ids.includes(node.id));
@@ -1034,27 +1602,50 @@ function DashboardInvestigator({ token }) {
                     })(),
                   }}
                 >
+                  <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border border-slate-900 bg-cyan-400/90 text-[9px] font-bold text-slate-900">
+                    {metadata?.offenseTag || 'C'}
+                  </span>
                   <span className="line-clamp-3 px-1">{node.label}</span>
                 </button>
+                  );
+                })()
               ))}
             </div>
 
             <div className="h-full space-y-3 overflow-y-auto rounded-xl border border-slate-500/20 bg-slate-950/60 p-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Conexiones ({connections.length})</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Conexiones ({activeConnections.length})</p>
                 <div className="mt-2 space-y-1">
-                  {connections.length === 0 ? (
+                  {activeConnections.length === 0 ? (
                     <p className="text-xs text-slate-400">Aun no hay enlaces creados.</p>
                   ) : (
-                    connections.map((edge) => {
+                    activeConnections.map((edge) => {
                       const key = getPairKey(edge.a, edge.b);
                       const source = carpetas.find((caseItem) => caseItem.id === edge.a);
                       const target = carpetas.find((caseItem) => caseItem.id === edge.b);
+                      const visual = getConnectionVisual(edge.connectionType);
                       return (
                         <div key={key} className="flex items-center justify-between rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs">
-                          <span className="text-slate-200">
-                            {source?.nombre || edge.a} - {target?.nombre || edge.b}
-                          </span>
+                          <div>
+                            <span className="text-slate-200">
+                              {source?.nombre || edge.a} - {target?.nombre || edge.b}
+                            </span>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: visual.stroke }} />
+                              <select
+                                disabled={investigationFinished}
+                                value={edge.connectionType || 'objetiva'}
+                                onChange={(event) => updateConnectionType(key, event.target.value)}
+                                className="rounded border border-slate-500/30 bg-slate-900 px-2 py-0.5 text-[10px] text-slate-200"
+                              >
+                                {CONNECTION_TYPE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
                           {!investigationFinished && (
                             <button
                               type="button"
@@ -1105,7 +1696,7 @@ function DashboardInvestigator({ token }) {
                               placeholder="Nombre del grupo"
                             />
                             <select
-                              disabled={investigationFinished}
+                              disabled={investigationFinished || Boolean(finalizedGroups[group.key])}
                               value={groupMeta[group.key]?.relationType || group.relationType}
                               onChange={(event) => updateGroupMeta(group.key, { relationType: event.target.value })}
                               className="mt-1 w-full rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
@@ -1113,8 +1704,115 @@ function DashboardInvestigator({ token }) {
                               <option value="modalidad">Asociado por modalidad</option>
                               <option value="patrones">Asociado por patron</option>
                             </select>
+                            <select
+                              disabled={investigationFinished || Boolean(finalizedGroups[group.key])}
+                              value={groupMeta[group.key]?.patronCriminal || ''}
+                              onChange={(event) => updateGroupMeta(group.key, { patronCriminal: event.target.value })}
+                              className="mt-1 w-full rounded border border-cyan-500/30 bg-cyan-900/30 px-2 py-1 text-xs text-cyan-200 outline-none"
+                            >
+                              <option value="">-- Asignar Patrón Criminal --</option>
+                              <option value="Mismo modus operandi">Mismo modus operandi</option>
+                              <option value="Reclutamiento">Reclutamiento</option>
+                              <option value="Lavado de activos">Lavado de activos</option>
+                              <option value="Falsificación documental">Falsificación documental</option>
+                              <option value="Extorsión sistemática">Extorsión sistemática</option>
+                              <option value="Concierto para delinquir">Concierto para delinquir</option>
+                              <option value="Múltiples factores">Múltiples factores asociados</option>
+                            </select>
                           </div>
                         </div>
+                          <button
+                            type="button"
+                            onClick={() => finalizeGroup(group)}
+                            disabled={investigationFinished || Boolean(finalizedGroups[group.key])}
+                            className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <FiSave size={13} />
+                            {finalizedGroups[group.key] ? 'Grupo finalizado' : 'Finalizar grupo'}
+                          </button>
+
+                          {finalizedGroups[group.key] && (() => {
+                            const snapshot = finalizedGroups[group.key];
+                            const layout = buildCompactGraphLayout(snapshot.nodes || snapshot.cases || []);
+                            return (
+                              <div className="mt-3 rounded-lg border border-emerald-400/20 bg-slate-950/60 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                                      Grafo finalizado
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-slate-400">
+                                      {snapshot.groupName || group.name} · {snapshot.relationType === 'patrones' ? 'Patrón' : 'Modalidad'}
+                                    </p>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">
+                                    {layout.nodes.length} nodos / {snapshot.connections.length} conexiones
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 overflow-hidden rounded-xl border border-slate-500/20 bg-slate-950/80 p-2">
+                                  <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="h-[170px] w-full">
+                                    {snapshot.connections.map((edge) => {
+                                      const source = layout.nodes.find((node) => String(node.id) === String(edge.sourceId));
+                                      const target = layout.nodes.find((node) => String(node.id) === String(edge.targetId));
+                                      if (!source || !target) {
+                                        return null;
+                                      }
+                                      const visual = getConnectionVisual(edge.connectionType);
+
+                                      return (
+                                        <line
+                                          key={edge.key}
+                                          x1={source.x}
+                                          y1={source.y}
+                                          x2={target.x}
+                                          y2={target.y}
+                                          stroke={visual.stroke}
+                                          strokeDasharray={visual.dashArray}
+                                          strokeWidth="2"
+                                          opacity="0.85"
+                                        />
+                                      );
+                                    })}
+
+                                    {layout.nodes.map((node) => (
+                                      <g key={node.id}>
+                                        <circle
+                                          cx={node.x}
+                                          cy={node.y}
+                                          r="20"
+                                          fill={hexToRgba(snapshot.color || '#38bdf8', 0.18)}
+                                          stroke={hexToRgba(snapshot.color || '#38bdf8', 0.65)}
+                                          strokeWidth="1.5"
+                                        />
+                                        <text
+                                          x={node.x}
+                                          y={node.y - 25}
+                                          textAnchor="middle"
+                                          fill="#e2e8f0"
+                                          fontSize="9"
+                                          fontWeight="700"
+                                        >
+                                          {String(node.name || '').slice(0, 12)}
+                                        </text>
+                                        <text
+                                          x={node.x}
+                                          y={node.y + 3}
+                                          textAnchor="middle"
+                                          fill="#e2e8f0"
+                                          fontSize="8"
+                                          fontWeight="700"
+                                        >
+                                          {String(node.name || '').slice(0, 10)}
+                                        </text>
+                                      </g>
+                                    ))}
+                                  </svg>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
                         <p className="mt-2 text-[11px]" style={{ color: hexToRgba(group.color, 0.9) }}>
                           {group.ids.length} casos conectados
                         </p>
@@ -1269,6 +1967,49 @@ function DashboardInvestigator({ token }) {
               <div className="border-b border-slate-500/20 bg-slate-950/60 p-5 lg:border-b-0 lg:border-r">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resumen</p>
                 <p className="mt-2 text-sm text-slate-200">{selectedCase.descripcion || 'Sin descripcion.'}</p>
+
+                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-cyan-200/80">Metadatos del caso</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-200">
+                    <p className="flex items-center gap-2">
+                      <FiAlertTriangle size={12} className="text-amber-300" />
+                      Tipo de delito: {selectedCaseMetadata?.offenseType || 'Sin registrar'}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <FiCalendar size={12} className="text-cyan-300" />
+                      Fecha del caso: {selectedCaseMetadata?.caseDateLabel || 'Sin fecha'}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <FiUsers size={12} className="text-emerald-300" />
+                      Victima-victimario: {selectedCaseMetadata?.victim || 'Sin registrar'} / {selectedCaseMetadata?.offender || 'Sin registrar'}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <FiMapPin size={12} className="text-fuchsia-300" />
+                      Zona territorial: {selectedCaseMetadata?.zone || 'Sin registrar'}
+                    </p>
+                  </div>
+
+                  <div className="mt-3">
+                    <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.15em] text-slate-300/80">
+                      <FiShield size={12} className="text-cyan-200" />
+                      Actores involucrados
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(selectedCaseMetadata?.actors || []).map((actor, actorIndex) => (
+                        <span
+                          key={`${selectedCase?.id}-${actor}`}
+                          className="inline-flex items-center gap-2 rounded-full border border-slate-500/30 px-2 py-1 text-[11px] text-slate-100"
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: ACTOR_BADGE_COLORS[actorIndex % ACTOR_BADGE_COLORS.length] }}
+                          />
+                          {actor}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
                 <div className="mt-4 rounded-xl border border-slate-500/20 bg-slate-900/70 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Documentos</p>
