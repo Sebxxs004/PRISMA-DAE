@@ -468,12 +468,9 @@ function DashboardInvestigator({ token }) {
     }
   }, [elapsedSeconds, isComplexMode, tiempoLimiteMinutos, investigationFinished, validationResult, finishing]);
 
-  const activeNodes = useMemo(() => nodes.filter((node) => !finalizedNodeIds.has(String(node.id))), [nodes, finalizedNodeIds]);
+  const activeNodes = useMemo(() => nodes, [nodes]);
 
-  const activeConnections = useMemo(
-    () => connections.filter((edge) => !finalizedNodeIds.has(String(edge.a)) && !finalizedNodeIds.has(String(edge.b))),
-    [connections, finalizedNodeIds]
-  );
+  const activeConnections = useMemo(() => connections, [connections]);
 
   const activeNodeById = useMemo(() => {
     const map = new Map();
@@ -1350,6 +1347,7 @@ function DashboardInvestigator({ token }) {
 
     setConnections([]);
     setSelectedNodeIds([]);
+    setFinalizedGroups({});
     setValidationResult(null);
     setObjetivosFeedback(null);
     setDisagreementReasons({});
