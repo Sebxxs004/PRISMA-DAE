@@ -56,8 +56,8 @@ router.put('/', authenticate, requireAdmin, async (req, res) => {
     await ensureConfigTable();
     const { tiempo_limite_minutos } = req.body;
     
-    if (tiempo_limite_minutos === undefined || tiempo_limite_minutos < 1) {
-      return res.status(400).json({ error: 'Tiempo límite inválido' });
+    if (tiempo_limite_minutos === undefined || tiempo_limite_minutos < 60) {
+      return res.status(400).json({ error: 'Tiempo límite inválido, el mínimo es 60 minutos' });
     }
 
     const result = await pool.query(

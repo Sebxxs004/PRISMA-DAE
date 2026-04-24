@@ -318,7 +318,9 @@ function DashboardInvestigator({ token }) {
   const [startTimestamp, setStartTimestamp] = useState(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  const [isComplexMode, setIsComplexMode] = useState(false);
+  const [connectionJustifications, setConnectionJustifications] = useState({});
+  const [pendingConnection, setPendingConnection] = useState(null);
+  const [justificationText, setJustificationText] = useState('');
   const [tiempoLimiteMinutos, setTiempoLimiteMinutos] = useState(10);
   const [autorIntelectualGuess, setAutorIntelectualGuess] = useState('');
   const [zonaOperacionGuess, setZonaOperacionGuess] = useState('');
@@ -388,15 +390,34 @@ function DashboardInvestigator({ token }) {
       try {
         const response = await axios.get(`${API_URL}/configuracion`, { headers: authHeaders });
         if (!cancelled && response.data) {
-          setTiempoLimiteMinutos(response.data.tiempo_limite_minutos || 10);
+          setTiempoLimiteMinutos(response.data.tiempo_limite_minutos || 60);
         }
       } catch (err) {
         console.error('Error cargando configuracion:', err);
       }
     };
 
+    const loadDraft = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/investigacion-feedback/me/draft`, { headers: authHeaders });
+        if (!cancelled && response.data && response.data.draft) {
+          const draft = response.data.draft;
+          if (draft.connections) setConnections(draft.connections);
+          if (draft.finalizedGroups) setFinalizedGroups(draft.finalizedGroups);
+          if (draft.startTimestamp) setStartTimestamp(draft.startTimestamp);
+          if (draft.elapsedSeconds) setElapsedSeconds(draft.elapsedSeconds);
+          if (draft.autorIntelectualGuess) setAutorIntelectualGuess(draft.autorIntelectualGuess);
+          if (draft.zonaOperacionGuess) setZonaOperacionGuess(draft.zonaOperacionGuess);
+          if (draft.connectionJustifications) setConnectionJustifications(draft.connectionJustifications);
+        }
+      } catch (err) {
+        console.error('Error cargando borrador:', err);
+      }
+    };
+
     loadCases();
     loadConfig();
+    loadDraft();
 
     return () => {
       cancelled = true;
@@ -459,14 +480,39 @@ function DashboardInvestigator({ token }) {
     return () => clearInterval(timer);
   }, [startTimestamp, investigationFinished, validationResult, feedbackSubmitted]);
 
+  // Auto-save borrador cada 5 segundos si hubo cambios
   useEffect(() => {
-    if (isComplexMode && !investigationFinished && !validationResult && !finishing) {
+    if (investigationFinished || validationResult || feedbackSubmitted || loadingCases) return;
+
+    const saveDraft = async () => {
+      try {
+        const draftData = {
+          connections,
+          finalizedGroups,
+          startTimestamp,
+          elapsedSeconds,
+          autorIntelectualGuess,
+          zonaOperacionGuess,
+          connectionJustifications
+        };
+        await axios.put(`${API_URL}/investigacion-feedback/me/draft`, { estado_json: draftData }, { headers: authHeaders });
+      } catch (err) {
+        console.error('Error guardando borrador:', err);
+      }
+    };
+
+    const handler = setTimeout(saveDraft, 5000);
+    return () => clearTimeout(handler);
+  }, [connections, finalizedGroups, startTimestamp, elapsedSeconds, autorIntelectualGuess, zonaOperacionGuess, connectionJustifications, investigationFinished, validationResult, feedbackSubmitted, loadingCases, authHeaders]);
+
+  useEffect(() => {
+    if (!investigationFinished && !validationResult && !finishing) {
       const remaining = tiempoLimiteMinutos * 60 - elapsedSeconds;
       if (remaining <= 0) {
         finishInvestigation();
       }
     }
-  }, [elapsedSeconds, isComplexMode, tiempoLimiteMinutos, investigationFinished, validationResult, finishing]);
+  }, [elapsedSeconds, tiempoLimiteMinutos, investigationFinished, validationResult, finishing]);
 
   const activeNodes = useMemo(() => nodes, [nodes]);
 
@@ -774,14 +820,37 @@ function DashboardInvestigator({ token }) {
   }, [carpetas]);
 
   const buildJustificacionesPayload = (result, reasonsMap) => {
-    const incorrectPairs = result?.incorrect || [];
-    return incorrectPairs
-      .map((pairKey) => ({
+    const combined = [];
+    
+    // Añadir justificaciones de las conexiones hechas durante la investigacion
+    Object.entries(connectionJustifications).forEach(([pairKey, reason]) => {
+      combined.push({
         pairKey,
         pairLabel: formatPairLabel(pairKey, caseNameById),
-        reason: String(reasonsMap[pairKey] || '').trim(),
-      }))
-      .filter((item) => item.reason.length > 0);
+        reason: String(reason).trim(),
+      });
+    });
+
+    // Añadir/Actualizar justificaciones de desacuerdo post-feedback
+    const incorrectPairs = result?.incorrect || [];
+    incorrectPairs.forEach((pairKey) => {
+      const reason = String(reasonsMap[pairKey] || '').trim();
+      if (reason.length > 0) {
+        // Verificar si ya existe para reemplazar o agregar
+        const existing = combined.find(j => j.pairKey === pairKey);
+        if (existing) {
+          existing.reason = reason;
+        } else {
+          combined.push({
+            pairKey,
+            pairLabel: formatPairLabel(pairKey, caseNameById),
+            reason,
+          });
+        }
+      }
+    });
+
+    return combined.filter((item) => item.reason.length > 0);
   };
 
   const hydrateFeedback = (feedback) => {
@@ -923,7 +992,7 @@ function DashboardInvestigator({ token }) {
       return;
     }
 
-    if (selectedNodeIds.length >= 3) {
+    if (selectedNodeIds.length >= 2) {
       setSelectedNodeIds([nodeId]);
       return;
     }
@@ -931,22 +1000,15 @@ function DashboardInvestigator({ token }) {
     const nextSelection = [...selectedNodeIds, nodeId];
     setSelectedNodeIds(nextSelection);
 
-    if (nextSelection.length >= 2) {
-      const candidateEdges =
-        nextSelection.length === 2
-          ? [{ a: nextSelection[0], b: nextSelection[1] }]
-          : connectPairSet(nextSelection);
-
-      const newEdges = candidateEdges.filter((edge) => {
-        const key = getPairKey(edge.a, edge.b);
-        return !connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
-      });
-
-      if (newEdges.length > 0) {
-        setConnections((current) => [...current, ...newEdges]);
-      }
-
-      if (nextSelection.length === 3) {
+    if (nextSelection.length === 2) {
+      const edge = { a: nextSelection[0], b: nextSelection[1] };
+      const key = getPairKey(edge.a, edge.b);
+      
+      const alreadyConnected = connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
+      
+      if (!alreadyConnected) {
+        setPendingConnection(edge);
+      } else {
         setSelectedNodeIds([]);
       }
     }
@@ -961,6 +1023,14 @@ function DashboardInvestigator({ token }) {
 
     setConnections((current) => {
       const nextConnections = current.filter((edge) => getPairKey(edge.a, edge.b) !== edgeKey);
+      
+      // Eliminar justificacion de la conexion borrada
+      setConnectionJustifications(prev => {
+        const newJ = { ...prev };
+        delete newJ[edgeKey];
+        return newJ;
+      });
+      
       const nextComponents = buildComponents(activeNodeIds, nextConnections);
       const affectedComponents = nextComponents.filter((component) => component.includes(nodeAId) || component.includes(nodeBId));
 
@@ -1292,23 +1362,21 @@ function DashboardInvestigator({ token }) {
       const totalEvaluated = Math.max(1, expectedPairs.size);
       const score = Math.round((correct.length / totalEvaluated) * 100);
 
-      // Evaluar objetivos secundarios si es modo complejo
+      // Evaluar objetivos secundarios (siempre activos)
       let objetivosData = null;
-      if (isComplexMode) {
-        let autorCorrecto = false;
-        let zonaCorrecta = false;
-        carpetas.forEach(c => {
-          if (c.id === autorIntelectualGuess && c.es_autor_intelectual) autorCorrecto = true;
-          if (c.id === zonaOperacionGuess && c.es_zona_operacion) zonaCorrecta = true;
-        });
-        
-        objetivosData = {
-          autorCorrecto,
-          zonaCorrecta,
-          puntajeExtra: (autorCorrecto ? 10 : 0) + (zonaCorrecta ? 10 : 0)
-        };
-        setObjetivosFeedback(objetivosData);
-      }
+      let autorCorrecto = false;
+      let zonaCorrecta = false;
+      carpetas.forEach(c => {
+        if (c.id === autorIntelectualGuess && c.es_autor_intelectual) autorCorrecto = true;
+        if (c.id === zonaOperacionGuess && c.es_zona_operacion) zonaCorrecta = true;
+      });
+      
+      objetivosData = {
+        autorCorrecto,
+        zonaCorrecta,
+        puntajeExtra: (autorCorrecto ? 10 : 0) + (zonaCorrecta ? 10 : 0)
+      };
+      setObjetivosFeedback(objetivosData);
 
       setValidationResult({
         expectedTotal: expectedPairs.size,
@@ -1354,7 +1422,6 @@ function DashboardInvestigator({ token }) {
     setInvestigationFinished(false);
     setStartTimestamp(Date.now());
     setElapsedSeconds(0);
-    setIsComplexMode(false);
     setAutorIntelectualGuess('');
     setZonaOperacionGuess('');
   };
@@ -1386,36 +1453,16 @@ function DashboardInvestigator({ token }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-cyan-200">
                 <FiClock size={15} />
-                {isComplexMode ? 'Tiempo Restante' : 'Tiempo investigando'}
+                Tiempo Restante
               </div>
-              {!investigationFinished && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsComplexMode(!isComplexMode);
-                    setStartTimestamp(Date.now());
-                    setElapsedSeconds(0);
-                  }}
-                  className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase transition ${
-                    isComplexMode
-                      ? 'border-orange-500 text-orange-400 hover:bg-orange-500/20'
-                      : 'border-slate-500 text-slate-400 hover:bg-slate-500/20'
-                  }`}
-                >
-                  {isComplexMode ? 'Desactivar Complejo' : 'Activar Complejo'}
-                </button>
-              )}
             </div>
-            <p className={`mt-1 font-mono text-xl ${isComplexMode && (tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-100'}`}>
-              {isComplexMode
-                ? formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))
-                : formatSeconds(elapsedSeconds)}
+            <p className={`mt-1 font-mono text-xl ${(tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-100'}`}>
+              {formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))}
             </p>
           </div>
 
-          {isComplexMode && (
-            <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Misiones Estratégicas</p>
+          <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Misiones Estratégicas</p>
               
               <div className="mb-3">
                 <label className="text-[10px] text-slate-300">Identificar Autor Intelectual</label>
@@ -1447,7 +1494,6 @@ function DashboardInvestigator({ token }) {
                 </select>
               </div>
             </div>
-          )}
 
           <div className="mt-4 rounded-lg border border-slate-500/20 bg-slate-900/60 p-3">
             <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Carpetas</p>
@@ -1842,6 +1888,57 @@ function DashboardInvestigator({ token }) {
           </div>
         </main>
       </div>
+
+      {pendingConnection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-5 shadow-[0_0_45px_rgba(8,145,178,0.28)]">
+            <h2 className="mb-2 text-xl font-bold text-cyan-400">Justificar Conexión</h2>
+            <p className="mb-4 text-xs text-slate-300">
+              Has trazado una conexión entre: <br/>
+              <span className="font-semibold text-cyan-200">{caseNameById.get(pendingConnection.a)}</span>
+              <br/> y <br/>
+              <span className="font-semibold text-cyan-200">{caseNameById.get(pendingConnection.b)}</span>
+            </p>
+            <textarea
+              value={justificationText}
+              onChange={(e) => setJustificationText(e.target.value)}
+              className="h-24 w-full resize-none rounded-lg border border-slate-500/30 bg-slate-800 p-3 text-sm text-slate-200 outline-none focus:border-cyan-400"
+              placeholder="Escribe por qué crees que estos casos están conectados..."
+            />
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingConnection(null);
+                  setJustificationText('');
+                  setSelectedNodeIds([]);
+                }}
+                className="rounded-lg border border-slate-500/30 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700/40"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={justificationText.trim().length === 0}
+                onClick={() => {
+                  const key = getPairKey(pendingConnection.a, pendingConnection.b);
+                  setConnections((current) => [...current, pendingConnection]);
+                  setConnectionJustifications(prev => ({
+                    ...prev,
+                    [key]: justificationText.trim()
+                  }));
+                  setPendingConnection(null);
+                  setJustificationText('');
+                  setSelectedNodeIds([]);
+                }}
+                className="rounded-lg border border-cyan-400/50 bg-cyan-500/20 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/30 disabled:opacity-50"
+              >
+                Conectar Casos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isFeedbackModalOpen && validationResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">

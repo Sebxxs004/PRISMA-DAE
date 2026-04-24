@@ -49,6 +49,12 @@ const ensureSchema = async () => {
 
     ALTER TABLE evaluaciones_investigador
     ADD COLUMN IF NOT EXISTS plan_accion JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+    CREATE TABLE IF NOT EXISTS investigacion_borradores (
+      usuario_id UUID PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      estado_json JSONB NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   schemaReady = true;
@@ -128,6 +134,49 @@ router.get('/me', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo feedback del investigador:', error);
     return res.status(500).json({ error: 'No fue posible obtener el feedback del investigador' });
+  }
+});
+
+router.get('/me/draft', authenticate, async (req, res) => {
+  try {
+    await ensureSchema();
+    const result = await pool.query(
+      'SELECT estado_json FROM investigacion_borradores WHERE usuario_id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ draft: null });
+    }
+    return res.json({ draft: result.rows[0].estado_json });
+  } catch (error) {
+    console.error('Error obteniendo borrador:', error);
+    return res.status(500).json({ error: 'Error obteniendo borrador' });
+  }
+});
+
+router.put('/me/draft', authenticate, async (req, res) => {
+  try {
+    await ensureSchema();
+    const { estado_json } = req.body;
+    
+    if (!estado_json) {
+      return res.status(400).json({ error: 'Estado JSON requerido' });
+    }
+
+    await pool.query(
+      `
+      INSERT INTO investigacion_borradores (usuario_id, estado_json, updated_at)
+      VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
+      ON CONFLICT (usuario_id) 
+      DO UPDATE SET estado_json = $2::jsonb, updated_at = CURRENT_TIMESTAMP
+      `,
+      [req.user.id, JSON.stringify(estado_json)]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error guardando borrador:', error);
+    return res.status(500).json({ error: 'Error guardando borrador' });
   }
 });
 

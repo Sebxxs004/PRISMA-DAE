@@ -1230,7 +1230,7 @@ function DashboardAdmin() {
                   <p className="mt-1 text-[11px] text-slate-400">Este tiempo aplicará para el Modo Caso Complejo en todos los investigadores.</p>
                   <input
                     type="number"
-                    min="1"
+                    min="60"
                     required
                     value={configData.tiempo_limite_minutos}
                     onChange={(e) => setConfigData({ ...configData, tiempo_limite_minutos: parseInt(e.target.value, 10) })}
