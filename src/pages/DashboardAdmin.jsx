@@ -10,6 +10,7 @@ import {
   FiLink2,
   FiMinus,
   FiPlus,
+  FiSettings,
   FiTrash2,
   FiX,
 } from 'react-icons/fi';
@@ -46,8 +47,14 @@ function DashboardAdmin() {
     victimario: '',
     zona_territorial: '',
     actores_involucrados: '',
+    es_autor_intelectual: false,
+    es_zona_operacion: false,
     documentos: [{ ...EMPTY_DOCUMENT }],
   });
+
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [configData, setConfigData] = useState({ tiempo_limite_minutos: 10 });
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [caseViewData, setCaseViewData] = useState(null);
@@ -69,12 +76,43 @@ function DashboardAdmin() {
 
   useEffect(() => {
     cargarCarpetas();
+    cargarConfiguracion();
   }, []);
 
   const authHeaders = useMemo(
     () => ({ Authorization: `Bearer ${token}` }),
     [token]
   );
+
+  const cargarConfiguracion = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/configuracion`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.data) {
+        setConfigData(response.data);
+      }
+    } catch (err) {
+      console.error('Error cargando configuración:', err);
+    }
+  };
+
+  const handleSaveConfig = async (e) => {
+    e.preventDefault();
+    setSavingConfig(true);
+    try {
+      const response = await axios.put(`${API_URL}/configuracion`, configData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setConfigData(response.data);
+      setIsConfigModalOpen(false);
+    } catch (err) {
+      console.error('Error guardando configuración:', err);
+      setError('No fue posible guardar la configuración');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const getPdfViewerSrc = (archivoUrl) => {
     if (!archivoUrl) return null;
@@ -123,6 +161,8 @@ function DashboardAdmin() {
       victimario: '',
       zona_territorial: '',
       actores_involucrados: '',
+      es_autor_intelectual: false,
+      es_zona_operacion: false,
       documentos: [{ ...EMPTY_DOCUMENT }],
     });
     setIsEditMode(false);
@@ -170,6 +210,8 @@ function DashboardAdmin() {
         actores_involucrados: Array.isArray(carpeta.actores_involucrados)
           ? carpeta.actores_involucrados.join(', ')
           : (carpeta.actores_involucrados || ''),
+        es_autor_intelectual: Boolean(carpeta.es_autor_intelectual),
+        es_zona_operacion: Boolean(carpeta.es_zona_operacion),
         documentos,
       });
       setSelectedCaseId(carpeta.id);
@@ -356,6 +398,8 @@ function DashboardAdmin() {
             victimario: modalData.victimario,
             zona_territorial: modalData.zona_territorial,
             actores_involucrados: modalData.actores_involucrados,
+            es_autor_intelectual: modalData.es_autor_intelectual,
+            es_zona_operacion: modalData.es_zona_operacion,
           },
           {
             headers: authHeaders,
@@ -374,6 +418,8 @@ function DashboardAdmin() {
             victimario: modalData.victimario,
             zona_territorial: modalData.zona_territorial,
             actores_involucrados: modalData.actores_involucrados,
+            es_autor_intelectual: modalData.es_autor_intelectual,
+            es_zona_operacion: modalData.es_zona_operacion,
             usuario_id: usuario.id,
           },
           {
@@ -599,16 +645,25 @@ function DashboardAdmin() {
       </header>
 
       <main className="p-8">
-        <div className="mb-8 flex items-center justify-between">
-          <h2 className="font-mono text-xl font-semibold tracking-[0.15em] text-slate-100">Gestión de Casos</h2>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 font-mono text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
-          >
-            <FiPlus size={16} />
-            Nuevo Caso
-          </button>
-        </div>
+          <div className="flex items-center justify-between">
+            <h2 className="font-mono text-xl font-semibold tracking-[0.15em] text-slate-100">Gestión de Casos</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsConfigModalOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-slate-500/30 px-4 py-2 font-mono text-sm font-semibold text-slate-200 transition hover:bg-slate-700/40"
+              >
+                <FiSettings size={16} />
+                Configuración
+              </button>
+              <button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 font-mono text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+              >
+                <FiPlus size={16} />
+                Nuevo Caso
+              </button>
+            </div>
+          </div>
 
         {error && (
           <div className="mb-6 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-300">
@@ -775,6 +830,32 @@ function DashboardAdmin() {
                       placeholder="Separados por coma, ej: FGN, CTI, SIJIN"
                       className="mt-2 w-full rounded-lg border border-orange-400/30 bg-slate-900/80 px-4 py-2 font-mono text-sm text-slate-100 outline-none focus:border-orange-300"
                     />
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-orange-500/20 bg-slate-900/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">Objetivos Secundarios (Modo Complejo)</p>
+                  <p className="mt-1 mb-3 text-[11px] text-slate-400">Marca las opciones si esta carpeta es la respuesta a algún objetivo secundario.</p>
+                  
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={modalData.es_autor_intelectual}
+                        onChange={(e) => setModalData((current) => ({ ...current, es_autor_intelectual: e.target.checked }))}
+                        className="h-4 w-4 rounded border-slate-500/30 bg-slate-900/80 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-sm text-slate-200">Este caso contiene al Autor Intelectual</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={modalData.es_zona_operacion}
+                        onChange={(e) => setModalData((current) => ({ ...current, es_zona_operacion: e.target.checked }))}
+                        className="h-4 w-4 rounded border-slate-500/30 bg-slate-900/80 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-sm text-slate-200">Este caso define la Zona de Operación</span>
+                    </label>
                   </div>
                 </div>
 
@@ -1123,6 +1204,49 @@ function DashboardAdmin() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {isConfigModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8">
+            <div className="w-full max-w-sm rounded-2xl border border-slate-500/40 bg-slate-800/95 p-6 shadow-[0_0_40px_rgba(255,255,255,0.1)] backdrop-blur-lg">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="font-mono text-lg font-semibold tracking-[0.1em] text-slate-200">
+                  CONFIGURACIÓN GLOBAL
+                </h3>
+                <button
+                  onClick={() => setIsConfigModalOpen(false)}
+                  className="rounded border border-slate-500/30 p-1 text-slate-300 hover:bg-slate-700/40"
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+              <form onSubmit={handleSaveConfig} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-[0.1em] text-slate-300">
+                    Tiempo Límite (minutos)
+                  </label>
+                  <p className="mt-1 text-[11px] text-slate-400">Este tiempo aplicará para el Modo Caso Complejo en todos los investigadores.</p>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={configData.tiempo_limite_minutos}
+                    onChange={(e) => setConfigData({ ...configData, tiempo_limite_minutos: parseInt(e.target.value, 10) })}
+                    className="mt-2 w-full rounded-lg border border-slate-500/30 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingConfig}
+                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
+                  >
+                    {savingConfig ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

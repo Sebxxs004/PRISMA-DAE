@@ -45,7 +45,10 @@ const ensureSchema = async () => {
     ADD COLUMN IF NOT EXISTS resuelto BOOLEAN NOT NULL DEFAULT FALSE;
 
     ALTER TABLE evaluaciones_investigador
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+    ALTER TABLE evaluaciones_investigador
+    ADD COLUMN IF NOT EXISTS plan_accion JSONB NOT NULL DEFAULT '[]'::jsonb;
   `);
 
   schemaReady = true;
@@ -83,6 +86,7 @@ const mapFeedbackResponse = (feedback, justificaciones) => ({
   incorrect: feedback.incorrect_pairs || [],
   missing: feedback.missing_pairs || [],
   resuelto: Boolean(feedback.resuelto),
+  planAccion: feedback.plan_accion || [],
   justificaciones: justificaciones || [],
   createdAt: feedback.created_at,
 });
@@ -146,6 +150,7 @@ router.post('/', authenticate, async (req, res) => {
       incorrect = [],
       missing = [],
       justificaciones = [],
+      planAccion = [],
     } = req.body || {};
 
     const cleanJustificaciones = (justificaciones || []).filter(
@@ -178,9 +183,10 @@ router.post('/', authenticate, async (req, res) => {
           correct_pairs = $5::jsonb,
           incorrect_pairs = $6::jsonb,
           missing_pairs = $7::jsonb,
+          plan_accion = $8::jsonb,
           resuelto = TRUE,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $8
+        WHERE id = $9
         RETURNING *
         `,
         [
@@ -191,6 +197,7 @@ router.post('/', authenticate, async (req, res) => {
           JSON.stringify(correct),
           JSON.stringify(incorrect),
           JSON.stringify(missing),
+          JSON.stringify(planAccion),
           existingFeedback.id,
         ]
       );
@@ -201,8 +208,8 @@ router.post('/', authenticate, async (req, res) => {
       const insertFeedbackResult = await client.query(
         `
         INSERT INTO evaluaciones_investigador
-          (usuario_id, usuario_nombre, puntaje, expected_total, user_total, correct_pairs, incorrect_pairs, missing_pairs, resuelto)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, TRUE)
+          (usuario_id, usuario_nombre, puntaje, expected_total, user_total, correct_pairs, incorrect_pairs, missing_pairs, resuelto, plan_accion)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, TRUE, $9::jsonb)
         RETURNING *
         `,
         [
@@ -214,6 +221,7 @@ router.post('/', authenticate, async (req, res) => {
           JSON.stringify(correct),
           JSON.stringify(incorrect),
           JSON.stringify(missing),
+          JSON.stringify(planAccion),
         ]
       );
 
@@ -262,7 +270,7 @@ router.put('/me/justificaciones', authenticate, async (req, res) => {
     }
 
     const feedback = feedbackResult.rows[0];
-    const { justificaciones = [] } = req.body || {};
+    const { justificaciones = [], planAccion = [] } = req.body || {};
     const cleanJustificaciones = justificaciones.filter((item) => String(item?.reason || '').trim().length > 0);
 
     await client.query('BEGIN');
@@ -278,12 +286,22 @@ router.put('/me/justificaciones', authenticate, async (req, res) => {
       );
     }
 
+    const updateFeedbackResult = await client.query(
+      `
+      UPDATE evaluaciones_investigador
+      SET plan_accion = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+      `,
+      [JSON.stringify(planAccion), feedback.id]
+    );
+
     await client.query('COMMIT');
 
     const justificacionesRows = await fetchJustificaciones(feedback.id);
 
     return res.json({
-      feedback: mapFeedbackResponse(feedback, justificacionesRows),
+      feedback: mapFeedbackResponse(updateFeedbackResult.rows[0], justificacionesRows),
     });
   } catch (error) {
     await client.query('ROLLBACK');

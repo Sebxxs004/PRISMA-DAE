@@ -12,7 +12,9 @@ const ensureMetadataColumns = async () => {
       ADD COLUMN IF NOT EXISTS victima TEXT,
       ADD COLUMN IF NOT EXISTS victimario TEXT,
       ADD COLUMN IF NOT EXISTS zona_territorial VARCHAR(180),
-      ADD COLUMN IF NOT EXISTS actores_involucrados TEXT
+      ADD COLUMN IF NOT EXISTS actores_involucrados TEXT,
+      ADD COLUMN IF NOT EXISTS es_autor_intelectual BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS es_zona_operacion BOOLEAN DEFAULT FALSE
     `);
   } catch (error) {
     console.error('No fue posible asegurar columnas de metadatos en carpetas:', error);
@@ -37,6 +39,7 @@ router.get('/', verificarToken, async (req, res) => {
     const result = await pool.query(`
           SELECT c.id, c.nombre, c.descripcion, c.imagen_url, c.modalidad, c.patrones, c.es_aislado, c.created_at,
             c.tipo_delito, c.fecha_caso, c.victima, c.victimario, c.zona_territorial, c.actores_involucrados,
+            c.es_autor_intelectual, c.es_zona_operacion,
              u.nombre as created_by_nombre,
              COUNT(d.id) as cantidad_documentos
       FROM carpetas c
@@ -68,6 +71,8 @@ router.post('/', verificarToken, async (req, res) => {
       victimario,
       zona_territorial,
       actores_involucrados,
+      es_autor_intelectual,
+      es_zona_operacion,
     } = req.body;
 
     if (!nombre || !usuario_id) {
@@ -77,10 +82,12 @@ router.post('/', verificarToken, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO carpetas (
         nombre, descripcion, imagen_url, modalidad, patrones, created_by,
-        tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados,
+        es_autor_intelectual, es_zona_operacion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id, nombre, descripcion, imagen_url, modalidad, patrones,
-                tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados, created_at`,
+                tipo_delito, fecha_caso, victima, victimario, zona_territorial, actores_involucrados,
+                es_autor_intelectual, es_zona_operacion, created_at`,
       [
         nombre,
         descripcion || null,
@@ -94,6 +101,8 @@ router.post('/', verificarToken, async (req, res) => {
         victimario || null,
         zona_territorial || null,
         actores_involucrados || null,
+        Boolean(es_autor_intelectual),
+        Boolean(es_zona_operacion),
       ]
     );
 
@@ -135,6 +144,8 @@ router.put('/:id', verificarToken, async (req, res) => {
       victimario,
       zona_territorial,
       actores_involucrados,
+      es_autor_intelectual,
+      es_zona_operacion,
     } = req.body;
 
     const result = await pool.query(
@@ -150,8 +161,10 @@ router.put('/:id', verificarToken, async (req, res) => {
            victimario = $9,
            zona_territorial = $10,
            actores_involucrados = $11,
+           es_autor_intelectual = $12,
+           es_zona_operacion = $13,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12
+       WHERE id = $14
        RETURNING *`,
       [
         nombre,
@@ -165,6 +178,8 @@ router.put('/:id', verificarToken, async (req, res) => {
         victimario || null,
         zona_territorial || null,
         actores_involucrados || null,
+        Boolean(es_autor_intelectual),
+        Boolean(es_zona_operacion),
         id,
       ]
     );

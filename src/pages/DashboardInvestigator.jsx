@@ -25,11 +25,6 @@ const TICK_MS = 50;
 const NODE_RADIUS = 34;
 const GROUP_COLOR_PALETTE = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#f97316'];
 const ACTOR_BADGE_COLORS = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#f97316'];
-const CONNECTION_TYPE_OPTIONS = [
-  { value: 'subjetiva', label: 'Conexidad subjetiva' },
-  { value: 'objetiva', label: 'Conexidad objetiva' },
-  { value: 'instrumental', label: 'Conexidad instrumental' },
-];
 
 const CASE_METADATA_FALLBACKS = [
   {
@@ -261,7 +256,6 @@ function buildGroupSnapshot(group, currentConnections, caseNameById, caseMetadat
       targetId: edge.b,
       sourceName: caseNameById.get(String(edge.a)) || String(edge.a),
       targetName: caseNameById.get(String(edge.b)) || String(edge.b),
-      connectionType: edge.connectionType || 'objetiva',
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 
@@ -302,18 +296,6 @@ function buildCompactGraphLayout(nodes, width = 320, height = 150) {
   };
 }
 
-function getConnectionVisual(type) {
-  if (type === 'subjetiva') {
-    return { stroke: '#f59e0b', dashArray: undefined, label: 'Subjetiva' };
-  }
-
-  if (type === 'instrumental') {
-    return { stroke: '#22c55e', dashArray: '7 5', label: 'Instrumental' };
-  }
-
-  return { stroke: '#38bdf8', dashArray: undefined, label: 'Objetiva' };
-}
-
 function DashboardInvestigator({ token }) {
   const boardRef = useRef(null);
   const groupedRegionsRef = useRef([]);
@@ -332,10 +314,15 @@ function DashboardInvestigator({ token }) {
   const [connections, setConnections] = useState([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [finalizedGroups, setFinalizedGroups] = useState({});
-  const [selectedConnectionType, setSelectedConnectionType] = useState('objetiva');
 
   const [startTimestamp, setStartTimestamp] = useState(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  const [isComplexMode, setIsComplexMode] = useState(false);
+  const [tiempoLimiteMinutos, setTiempoLimiteMinutos] = useState(10);
+  const [autorIntelectualGuess, setAutorIntelectualGuess] = useState('');
+  const [zonaOperacionGuess, setZonaOperacionGuess] = useState('');
+  const [objetivosFeedback, setObjetivosFeedback] = useState(null);
 
   const [groupMeta, setGroupMeta] = useState({});
   const [finishing, setFinishing] = useState(false);
@@ -397,7 +384,19 @@ function DashboardInvestigator({ token }) {
       }
     };
 
+    const loadConfig = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/configuracion`, { headers: authHeaders });
+        if (!cancelled && response.data) {
+          setTiempoLimiteMinutos(response.data.tiempo_limite_minutos || 10);
+        }
+      } catch (err) {
+        console.error('Error cargando configuracion:', err);
+      }
+    };
+
     loadCases();
+    loadConfig();
 
     return () => {
       cancelled = true;
@@ -449,6 +448,25 @@ function DashboardInvestigator({ token }) {
     });
     return ids;
   }, [finalizedGroups]);
+
+  useEffect(() => {
+    if (investigationFinished || validationResult || feedbackSubmitted) return;
+
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTimestamp) / 1000));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [startTimestamp, investigationFinished, validationResult, feedbackSubmitted]);
+
+  useEffect(() => {
+    if (isComplexMode && !investigationFinished && !validationResult && !finishing) {
+      const remaining = tiempoLimiteMinutos * 60 - elapsedSeconds;
+      if (remaining <= 0) {
+        finishInvestigation();
+      }
+    }
+  }, [elapsedSeconds, isComplexMode, tiempoLimiteMinutos, investigationFinished, validationResult, finishing]);
 
   const activeNodes = useMemo(() => nodes.filter((node) => !finalizedNodeIds.has(String(node.id))), [nodes, finalizedNodeIds]);
 
@@ -850,7 +868,6 @@ function DashboardInvestigator({ token }) {
         height: Math.max(120, maxY - minY),
         color: meta?.color || getDefaultGroupColor(component[0]?.length ? component.length - 1 : 0),
         name: meta?.name || `Grupo ${component.length}`,
-        patronCriminal: meta?.patronCriminal || '',
       };
     });
   }, [components, groupMeta, activeNodeById]);
@@ -873,7 +890,6 @@ function DashboardInvestigator({ token }) {
         color: groupMeta[key]?.color || getDefaultGroupColor(index),
         name: groupMeta[key]?.name || `Grupo ${index + 1}`,
         relationType: groupMeta[key]?.relationType || 'modalidad',
-        patronCriminal: groupMeta[key]?.patronCriminal || '',
       };
     });
   }, [components, groupMeta, activeNodeById]);
@@ -890,7 +906,6 @@ function DashboardInvestigator({ token }) {
           next[component.key] = {
             name: `Grupo ${component.index + 1}`,
             relationType: 'modalidad',
-            patronCriminal: '',
             color: component.color,
           };
           changed = true;
@@ -922,7 +937,7 @@ function DashboardInvestigator({ token }) {
     if (nextSelection.length >= 2) {
       const candidateEdges =
         nextSelection.length === 2
-          ? [{ a: nextSelection[0], b: nextSelection[1], connectionType: selectedConnectionType }]
+          ? [{ a: nextSelection[0], b: nextSelection[1] }]
           : connectPairSet(nextSelection);
 
       const newEdges = candidateEdges.filter((edge) => {
@@ -931,31 +946,13 @@ function DashboardInvestigator({ token }) {
       });
 
       if (newEdges.length > 0) {
-        const normalizedEdges = newEdges.map((edge) => ({
-          ...edge,
-          connectionType: edge.connectionType || selectedConnectionType,
-        }));
-        setConnections((current) => [...current, ...normalizedEdges]);
+        setConnections((current) => [...current, ...newEdges]);
       }
 
       if (nextSelection.length === 3) {
         setSelectedNodeIds([]);
       }
     }
-  };
-
-  const updateConnectionType = (edgeKey, connectionType) => {
-    if (investigationFinished || validationResult) {
-      return;
-    }
-
-    setConnections((current) =>
-      current.map((edge) =>
-        getPairKey(edge.a, edge.b) === edgeKey
-          ? { ...edge, connectionType }
-          : edge
-      )
-    );
   };
 
   const removeConnection = (edgeKey) => {
@@ -1298,6 +1295,24 @@ function DashboardInvestigator({ token }) {
       const totalEvaluated = Math.max(1, expectedPairs.size);
       const score = Math.round((correct.length / totalEvaluated) * 100);
 
+      // Evaluar objetivos secundarios si es modo complejo
+      let objetivosData = null;
+      if (isComplexMode) {
+        let autorCorrecto = false;
+        let zonaCorrecta = false;
+        carpetas.forEach(c => {
+          if (c.id === autorIntelectualGuess && c.es_autor_intelectual) autorCorrecto = true;
+          if (c.id === zonaOperacionGuess && c.es_zona_operacion) zonaCorrecta = true;
+        });
+        
+        objetivosData = {
+          autorCorrecto,
+          zonaCorrecta,
+          puntajeExtra: (autorCorrecto ? 10 : 0) + (zonaCorrecta ? 10 : 0)
+        };
+        setObjetivosFeedback(objetivosData);
+      }
+
       setValidationResult({
         expectedTotal: expectedPairs.size,
         userTotal: userPairs.size,
@@ -1336,10 +1351,14 @@ function DashboardInvestigator({ token }) {
     setConnections([]);
     setSelectedNodeIds([]);
     setValidationResult(null);
+    setObjetivosFeedback(null);
     setDisagreementReasons({});
     setInvestigationFinished(false);
     setStartTimestamp(Date.now());
     setElapsedSeconds(0);
+    setIsComplexMode(false);
+    setAutorIntelectualGuess('');
+    setZonaOperacionGuess('');
   };
 
   const updateDisagreement = (pairKey, text) => {
@@ -1366,12 +1385,71 @@ function DashboardInvestigator({ token }) {
           <p className="mt-2 text-xs text-slate-400">Explora carpetas, revisa documentos y construye el grafo investigativo.</p>
 
           <div className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
-            <div className="flex items-center gap-2 text-sm text-cyan-200">
-              <FiClock size={15} />
-              Tiempo investigando
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-cyan-200">
+                <FiClock size={15} />
+                {isComplexMode ? 'Tiempo Restante' : 'Tiempo investigando'}
+              </div>
+              {!investigationFinished && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsComplexMode(!isComplexMode);
+                    setStartTimestamp(Date.now());
+                    setElapsedSeconds(0);
+                  }}
+                  className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase transition ${
+                    isComplexMode
+                      ? 'border-orange-500 text-orange-400 hover:bg-orange-500/20'
+                      : 'border-slate-500 text-slate-400 hover:bg-slate-500/20'
+                  }`}
+                >
+                  {isComplexMode ? 'Desactivar Complejo' : 'Activar Complejo'}
+                </button>
+              )}
             </div>
-            <p className="mt-1 font-mono text-xl text-slate-100">{formatSeconds(elapsedSeconds)}</p>
+            <p className={`mt-1 font-mono text-xl ${isComplexMode && (tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-100'}`}>
+              {isComplexMode
+                ? formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))
+                : formatSeconds(elapsedSeconds)}
+            </p>
           </div>
+
+          {isComplexMode && (
+            <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Misiones Estratégicas</p>
+              
+              <div className="mb-3">
+                <label className="text-[10px] text-slate-300">Identificar Autor Intelectual</label>
+                <select
+                  disabled={investigationFinished}
+                  value={autorIntelectualGuess}
+                  onChange={(e) => setAutorIntelectualGuess(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-500/30 bg-slate-900 px-2 py-1 text-xs text-slate-200 outline-none"
+                >
+                  <option value="">Selecciona el caso sospechoso...</option>
+                  {carpetas.map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-slate-300">Zona de Operación</label>
+                <select
+                  disabled={investigationFinished}
+                  value={zonaOperacionGuess}
+                  onChange={(e) => setZonaOperacionGuess(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-500/30 bg-slate-900 px-2 py-1 text-xs text-slate-200 outline-none"
+                >
+                  <option value="">Selecciona el caso clave...</option>
+                  {carpetas.map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 rounded-lg border border-slate-500/20 bg-slate-900/60 p-3">
             <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Carpetas</p>
@@ -1431,21 +1509,6 @@ function DashboardInvestigator({ token }) {
               <p className="text-sm text-slate-300">
                 Conecta esferas para crear hipotesis investigativas. Cada componente conectado se convierte en un grupo.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-xs text-slate-400">Tipo de conexidad para nuevas conexiones:</span>
-                <select
-                  value={selectedConnectionType}
-                  onChange={(event) => setSelectedConnectionType(event.target.value)}
-                  disabled={investigationFinished}
-                  className="rounded border border-slate-500/30 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
-                >
-                  {CONNECTION_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             <div className="flex gap-2">
@@ -1511,28 +1574,6 @@ function DashboardInvestigator({ token }) {
                     >
                       {region.name.toUpperCase()}
                     </text>
-                    {region.patronCriminal && (
-                      <rect
-                        x={region.x + 18}
-                        y={region.y + 36}
-                        width={region.patronCriminal.length * 6 + 10}
-                        height="18"
-                        rx="4"
-                        fill={hexToRgba(region.color, 0.15)}
-                      />
-                    )}
-                    {region.patronCriminal && (
-                      <text
-                        x={region.x + 23}
-                        y={region.y + 49}
-                        fill={region.color}
-                        fontSize="10"
-                        fontWeight="600"
-                        letterSpacing="0.05em"
-                      >
-                        PATRÓN: {region.patronCriminal}
-                      </text>
-                    )}
                   </g>
                 ))}
 
@@ -1543,7 +1584,6 @@ function DashboardInvestigator({ token }) {
                     return null;
                   }
                   const pairKey = getPairKey(edge.a, edge.b);
-                  const visual = getConnectionVisual(edge.connectionType);
                   return (
                     <line
                       key={pairKey}
@@ -1551,8 +1591,7 @@ function DashboardInvestigator({ token }) {
                       y1={source.y}
                       x2={target.x}
                       y2={target.y}
-                      stroke={visual.stroke}
-                      strokeDasharray={visual.dashArray}
+                      stroke="#38bdf8"
                       strokeWidth="2"
                       opacity="0.75"
                     />
@@ -1623,29 +1662,11 @@ function DashboardInvestigator({ token }) {
                       const key = getPairKey(edge.a, edge.b);
                       const source = carpetas.find((caseItem) => caseItem.id === edge.a);
                       const target = carpetas.find((caseItem) => caseItem.id === edge.b);
-                      const visual = getConnectionVisual(edge.connectionType);
                       return (
                         <div key={key} className="flex items-center justify-between rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs">
-                          <div>
-                            <span className="text-slate-200">
-                              {source?.nombre || edge.a} - {target?.nombre || edge.b}
-                            </span>
-                            <div className="mt-1 flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: visual.stroke }} />
-                              <select
-                                disabled={investigationFinished}
-                                value={edge.connectionType || 'objetiva'}
-                                onChange={(event) => updateConnectionType(key, event.target.value)}
-                                className="rounded border border-slate-500/30 bg-slate-900 px-2 py-0.5 text-[10px] text-slate-200"
-                              >
-                                {CONNECTION_TYPE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
+                          <span className="text-slate-200">
+                            {source?.nombre || edge.a} - {target?.nombre || edge.b}
+                          </span>
                           {!investigationFinished && (
                             <button
                               type="button"
@@ -1704,21 +1725,6 @@ function DashboardInvestigator({ token }) {
                               <option value="modalidad">Asociado por modalidad</option>
                               <option value="patrones">Asociado por patron</option>
                             </select>
-                            <select
-                              disabled={investigationFinished || Boolean(finalizedGroups[group.key])}
-                              value={groupMeta[group.key]?.patronCriminal || ''}
-                              onChange={(event) => updateGroupMeta(group.key, { patronCriminal: event.target.value })}
-                              className="mt-1 w-full rounded border border-cyan-500/30 bg-cyan-900/30 px-2 py-1 text-xs text-cyan-200 outline-none"
-                            >
-                              <option value="">-- Asignar Patrón Criminal --</option>
-                              <option value="Mismo modus operandi">Mismo modus operandi</option>
-                              <option value="Reclutamiento">Reclutamiento</option>
-                              <option value="Lavado de activos">Lavado de activos</option>
-                              <option value="Falsificación documental">Falsificación documental</option>
-                              <option value="Extorsión sistemática">Extorsión sistemática</option>
-                              <option value="Concierto para delinquir">Concierto para delinquir</option>
-                              <option value="Múltiples factores">Múltiples factores asociados</option>
-                            </select>
                           </div>
                         </div>
                           <button
@@ -1758,7 +1764,6 @@ function DashboardInvestigator({ token }) {
                                       if (!source || !target) {
                                         return null;
                                       }
-                                      const visual = getConnectionVisual(edge.connectionType);
 
                                       return (
                                         <line
@@ -1767,8 +1772,7 @@ function DashboardInvestigator({ token }) {
                                           y1={source.y}
                                           x2={target.x}
                                           y2={target.y}
-                                          stroke={visual.stroke}
-                                          strokeDasharray={visual.dashArray}
+                                          stroke={snapshot.color || '#38bdf8'}
                                           strokeWidth="2"
                                           opacity="0.85"
                                         />
@@ -1883,6 +1887,20 @@ function DashboardInvestigator({ token }) {
                 </div>
               </div>
             </div>
+
+            {objetivosFeedback && (
+              <div className="mt-4 rounded border border-orange-500/30 bg-orange-500/10 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-orange-200">Resultados Misiones Estratégicas</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className={`rounded px-3 py-2 text-xs ${objetivosFeedback.autorCorrecto ? 'bg-emerald-500/20 text-emerald-200' : 'bg-red-500/20 text-red-200'}`}>
+                    Autor Intelectual: {objetivosFeedback.autorCorrecto ? '¡Acertado!' : 'Fallido'}
+                  </div>
+                  <div className={`rounded px-3 py-2 text-xs ${objetivosFeedback.zonaCorrecta ? 'bg-emerald-500/20 text-emerald-200' : 'bg-red-500/20 text-red-200'}`}>
+                    Zona Operación: {objetivosFeedback.zonaCorrecta ? '¡Acertado!' : 'Fallida'}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {validationResult.missing.length > 0 && (
               <div className="mt-4 space-y-1 rounded border border-amber-500/20 bg-amber-500/5 p-3">
