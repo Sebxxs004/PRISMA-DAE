@@ -1448,10 +1448,6 @@ function DashboardInvestigator({ token }) {
   };
 
   const restartInvestigation = async () => {
-    if (validationResult || feedbackSubmitted) {
-      setError('La prueba ya fue presentada. No se puede reiniciar.');
-      return;
-    }
 
     try {
       await axios.delete(`${API_URL}/investigacion-feedback/me/draft`, { headers: authHeaders });
@@ -1474,6 +1470,7 @@ function DashboardInvestigator({ token }) {
     setGroupGuesses({});
     setConnectionJustifications({});
     setGroupMeta({});
+    setFeedbackSubmitted(false);
   };
 
   const updateDisagreement = (pairKey, text) => {
@@ -1545,7 +1542,6 @@ function DashboardInvestigator({ token }) {
               <button
                 type="button"
                 onClick={restartInvestigation}
-                disabled={feedbackSubmitted || Boolean(validationResult)}
                 className="flex items-center gap-2 rounded-lg border border-slate-500/30 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700/40"
               >
                 <FiPlay size={14} />
