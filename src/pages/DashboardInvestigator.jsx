@@ -999,7 +999,7 @@ function DashboardInvestigator({ token }) {
       return;
     }
 
-    if (selectedNodeIds.length >= 3) {
+    if (selectedNodeIds.length >= 2) {
       setSelectedNodeIds([nodeId]);
       return;
     }
@@ -1007,20 +1007,14 @@ function DashboardInvestigator({ token }) {
     const nextSelection = [...selectedNodeIds, nodeId];
     setSelectedNodeIds(nextSelection);
 
-    if (nextSelection.length >= 2) {
-      const candidateEdges =
-        nextSelection.length === 2
-          ? [{ a: nextSelection[0], b: nextSelection[1] }]
-          : connectPairSet(nextSelection);
+    if (nextSelection.length === 2) {
+      const edge = { a: nextSelection[0], b: nextSelection[1] };
+      const key = getPairKey(edge.a, edge.b);
+      const exists = connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
 
-      const newEdges = candidateEdges.filter((edge) => {
-        const key = getPairKey(edge.a, edge.b);
-        return !connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
-      });
-
-      if (newEdges.length > 0) {
-        setPendingConnections(newEdges);
-      } else if (nextSelection.length === 3) {
+      if (!exists) {
+        setPendingConnections([edge]);
+      } else {
         setSelectedNodeIds([]);
       }
     }
@@ -1420,6 +1414,12 @@ function DashboardInvestigator({ token }) {
       setInvestigationFinished(true);
       setSelectedNodeIds([]);
       setIsFeedbackModalOpen(true);
+      
+      try {
+        await axios.delete(`${API_URL}/investigacion-feedback/me/draft`, { headers: authHeaders });
+      } catch (err) {
+        console.error('Error eliminando borrador al finalizar:', err);
+      }
 
       const groupJustifications = {};
       Object.entries(groupMeta).forEach(([k, meta]) => {
@@ -1447,10 +1447,16 @@ function DashboardInvestigator({ token }) {
     }
   };
 
-  const restartInvestigation = () => {
+  const restartInvestigation = async () => {
     if (validationResult || feedbackSubmitted) {
       setError('La prueba ya fue presentada. No se puede reiniciar.');
       return;
+    }
+
+    try {
+      await axios.delete(`${API_URL}/investigacion-feedback/me/draft`, { headers: authHeaders });
+    } catch (err) {
+      console.error('Error eliminando borrador al reiniciar:', err);
     }
 
     setConnections([]);
@@ -1464,6 +1470,10 @@ function DashboardInvestigator({ token }) {
     setElapsedSeconds(0);
     setAutorIntelectualGuess('');
     setZonaOperacionGuess('');
+    setCaseGuesses({});
+    setGroupGuesses({});
+    setConnectionJustifications({});
+    setGroupMeta({});
   };
 
   const updateDisagreement = (pairKey, text) => {
@@ -1492,7 +1502,13 @@ function DashboardInvestigator({ token }) {
             </button>
           </nav>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 rounded-lg border border-cyan-500/20 bg-slate-900/50 px-3 py-1.5">
+            <FiClock size={16} className="text-cyan-400" />
+            <p className={`font-mono text-base font-semibold ${(tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-200'}`}>
+              {formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))}
+            </p>
+          </div>
           <p className="text-xs text-slate-400">{usuario?.nombre ? `Sesión: ${usuario.nombre}` : 'Sesión activa'}</p>
           <button
             type="button"
@@ -1506,22 +1522,7 @@ function DashboardInvestigator({ token }) {
 
       <div className="flex flex-1 overflow-hidden">
         {activeTab === 'tablero' ? (
-          <>
-            <aside className="w-[360px] border-r border-slate-600/30 bg-slate-950/70 p-4">
 
-          <div className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-cyan-200">
-                <FiClock size={15} />
-                Tiempo Restante
-              </div>
-            </div>
-            <p className={`mt-1 font-mono text-xl ${(tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-100'}`}>
-              {formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))}
-            </p>
-          </div>
-
-        </aside>
 
         <main className="flex-1 p-4">
           <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[1fr_auto]">
@@ -1895,7 +1896,6 @@ function DashboardInvestigator({ token }) {
             </div>
           </div>
         </main>
-          </>
         ) : (
           <div className="flex-1 overflow-y-auto p-6 bg-slate-950/40">
             <div className="mx-auto max-w-6xl">

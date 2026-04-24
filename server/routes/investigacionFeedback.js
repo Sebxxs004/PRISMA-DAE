@@ -189,6 +189,20 @@ router.put('/me/draft', authenticate, async (req, res) => {
   }
 });
 
+router.delete('/me/draft', authenticate, async (req, res) => {
+  try {
+    await ensureSchema();
+    await pool.query(
+      'DELETE FROM investigacion_borradores WHERE usuario_id = $1',
+      [req.user.id]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error eliminando borrador:', error);
+    return res.status(500).json({ error: 'Error eliminando borrador' });
+  }
+});
+
 router.post('/', authenticate, async (req, res) => {
   const client = await pool.connect();
 
