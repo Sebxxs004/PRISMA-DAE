@@ -50,6 +50,15 @@ const ensureSchema = async () => {
     ALTER TABLE evaluaciones_investigador
     ADD COLUMN IF NOT EXISTS plan_accion JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+    ALTER TABLE evaluaciones_investigador
+    ADD COLUMN IF NOT EXISTS case_guesses JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    ALTER TABLE evaluaciones_investigador
+    ADD COLUMN IF NOT EXISTS group_guesses JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    ALTER TABLE evaluaciones_investigador
+    ADD COLUMN IF NOT EXISTS group_justifications JSONB NOT NULL DEFAULT '{}'::jsonb;
+
     CREATE TABLE IF NOT EXISTS investigacion_borradores (
       usuario_id UUID PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
       estado_json JSONB NOT NULL,
@@ -200,6 +209,9 @@ router.post('/', authenticate, async (req, res) => {
       missing = [],
       justificaciones = [],
       planAccion = [],
+      caseGuesses = {},
+      groupGuesses = {},
+      groupJustifications = {},
     } = req.body || {};
 
     const cleanJustificaciones = (justificaciones || []).filter(
@@ -233,9 +245,12 @@ router.post('/', authenticate, async (req, res) => {
           incorrect_pairs = $6::jsonb,
           missing_pairs = $7::jsonb,
           plan_accion = $8::jsonb,
+          case_guesses = $9::jsonb,
+          group_guesses = $10::jsonb,
+          group_justifications = $11::jsonb,
           resuelto = TRUE,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $9
+        WHERE id = $12
         RETURNING *
         `,
         [
@@ -247,6 +262,9 @@ router.post('/', authenticate, async (req, res) => {
           JSON.stringify(incorrect),
           JSON.stringify(missing),
           JSON.stringify(planAccion),
+          JSON.stringify(caseGuesses),
+          JSON.stringify(groupGuesses),
+          JSON.stringify(groupJustifications),
           existingFeedback.id,
         ]
       );
@@ -257,8 +275,8 @@ router.post('/', authenticate, async (req, res) => {
       const insertFeedbackResult = await client.query(
         `
         INSERT INTO evaluaciones_investigador
-          (usuario_id, usuario_nombre, puntaje, expected_total, user_total, correct_pairs, incorrect_pairs, missing_pairs, resuelto, plan_accion)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, TRUE, $9::jsonb)
+          (usuario_id, usuario_nombre, puntaje, expected_total, user_total, correct_pairs, incorrect_pairs, missing_pairs, resuelto, plan_accion, case_guesses, group_guesses, group_justifications)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, TRUE, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb)
         RETURNING *
         `,
         [
@@ -271,6 +289,9 @@ router.post('/', authenticate, async (req, res) => {
           JSON.stringify(incorrect),
           JSON.stringify(missing),
           JSON.stringify(planAccion),
+          JSON.stringify(caseGuesses),
+          JSON.stringify(groupGuesses),
+          JSON.stringify(groupJustifications),
         ]
       );
 

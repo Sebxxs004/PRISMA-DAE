@@ -319,8 +319,11 @@ function DashboardInvestigator({ token }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const [connectionJustifications, setConnectionJustifications] = useState({});
-  const [pendingConnection, setPendingConnection] = useState(null);
+  const [pendingConnections, setPendingConnections] = useState([]);
   const [justificationText, setJustificationText] = useState('');
+  const [activeTab, setActiveTab] = useState('tablero');
+  const [caseGuesses, setCaseGuesses] = useState({});
+  const [groupGuesses, setGroupGuesses] = useState({});
   const [tiempoLimiteMinutos, setTiempoLimiteMinutos] = useState(10);
   const [autorIntelectualGuess, setAutorIntelectualGuess] = useState('');
   const [zonaOperacionGuess, setZonaOperacionGuess] = useState('');
@@ -409,6 +412,8 @@ function DashboardInvestigator({ token }) {
           if (draft.autorIntelectualGuess) setAutorIntelectualGuess(draft.autorIntelectualGuess);
           if (draft.zonaOperacionGuess) setZonaOperacionGuess(draft.zonaOperacionGuess);
           if (draft.connectionJustifications) setConnectionJustifications(draft.connectionJustifications);
+          if (draft.caseGuesses) setCaseGuesses(draft.caseGuesses);
+          if (draft.groupGuesses) setGroupGuesses(draft.groupGuesses);
         }
       } catch (err) {
         console.error('Error cargando borrador:', err);
@@ -493,7 +498,9 @@ function DashboardInvestigator({ token }) {
           elapsedSeconds,
           autorIntelectualGuess,
           zonaOperacionGuess,
-          connectionJustifications
+          connectionJustifications,
+          caseGuesses,
+          groupGuesses
         };
         await axios.put(`${API_URL}/investigacion-feedback/me/draft`, { estado_json: draftData }, { headers: authHeaders });
       } catch (err) {
@@ -503,7 +510,7 @@ function DashboardInvestigator({ token }) {
 
     const handler = setTimeout(saveDraft, 5000);
     return () => clearTimeout(handler);
-  }, [connections, finalizedGroups, startTimestamp, elapsedSeconds, autorIntelectualGuess, zonaOperacionGuess, connectionJustifications, investigationFinished, validationResult, feedbackSubmitted, loadingCases, authHeaders]);
+  }, [connections, finalizedGroups, startTimestamp, elapsedSeconds, autorIntelectualGuess, zonaOperacionGuess, connectionJustifications, caseGuesses, groupGuesses, investigationFinished, validationResult, feedbackSubmitted, loadingCases, authHeaders]);
 
   useEffect(() => {
     if (!investigationFinished && !validationResult && !finishing) {
@@ -992,7 +999,7 @@ function DashboardInvestigator({ token }) {
       return;
     }
 
-    if (selectedNodeIds.length >= 2) {
+    if (selectedNodeIds.length >= 3) {
       setSelectedNodeIds([nodeId]);
       return;
     }
@@ -1000,15 +1007,20 @@ function DashboardInvestigator({ token }) {
     const nextSelection = [...selectedNodeIds, nodeId];
     setSelectedNodeIds(nextSelection);
 
-    if (nextSelection.length === 2) {
-      const edge = { a: nextSelection[0], b: nextSelection[1] };
-      const key = getPairKey(edge.a, edge.b);
-      
-      const alreadyConnected = connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
-      
-      if (!alreadyConnected) {
-        setPendingConnection(edge);
-      } else {
+    if (nextSelection.length >= 2) {
+      const candidateEdges =
+        nextSelection.length === 2
+          ? [{ a: nextSelection[0], b: nextSelection[1] }]
+          : connectPairSet(nextSelection);
+
+      const newEdges = candidateEdges.filter((edge) => {
+        const key = getPairKey(edge.a, edge.b);
+        return !connections.some((currentEdge) => getPairKey(currentEdge.a, currentEdge.b) === key);
+      });
+
+      if (newEdges.length > 0) {
+        setPendingConnections(newEdges);
+      } else if (nextSelection.length === 3) {
         setSelectedNodeIds([]);
       }
     }
@@ -1184,6 +1196,9 @@ function DashboardInvestigator({ token }) {
           incorrect: result.incorrect,
           missing: result.missing,
           justificaciones: buildJustificacionesPayload(result, disagreementReasons),
+          caseGuesses: result.caseGuesses,
+          groupGuesses: result.groupGuesses,
+          groupJustifications: result.groupJustifications,
         },
         { headers: authHeaders }
       );
@@ -1359,22 +1374,37 @@ function DashboardInvestigator({ token }) {
         }
       });
 
-      const totalEvaluated = Math.max(1, expectedPairs.size);
-      const score = Math.round((correct.length / totalEvaluated) * 100);
-
-      // Evaluar objetivos secundarios (siempre activos)
-      let objetivosData = null;
-      let autorCorrecto = false;
-      let zonaCorrecta = false;
-      carpetas.forEach(c => {
-        if (c.id === autorIntelectualGuess && c.es_autor_intelectual) autorCorrecto = true;
-        if (c.id === zonaOperacionGuess && c.es_zona_operacion) zonaCorrecta = true;
-      });
+      const totalEvaluatedPairs = Math.max(1, expectedPairs.size);
       
-      objetivosData = {
-        autorCorrecto,
-        zonaCorrecta,
-        puntajeExtra: (autorCorrecto ? 10 : 0) + (zonaCorrecta ? 10 : 0)
+      let totalPuntosPosibles = expectedPairs.size;
+      let puntosObtenidos = correct.length;
+
+      let autorCorrectoCount = 0;
+      let zonaCorrectaCount = 0;
+
+      carpetas.forEach(c => {
+        if (c.es_autor_intelectual) {
+          totalPuntosPosibles++;
+          if (caseGuesses[c.id]?.autorIntelectual === 'si' || Object.values(groupGuesses).some(g => g.autorIntelectual === c.id)) {
+            puntosObtenidos++;
+            autorCorrectoCount++;
+          }
+        }
+        if (c.es_zona_operacion) {
+          totalPuntosPosibles++;
+          if (caseGuesses[c.id]?.zonaOperacion === 'si' || Object.values(groupGuesses).some(g => g.zonaOperacion === c.id)) {
+            puntosObtenidos++;
+            zonaCorrectaCount++;
+          }
+        }
+      });
+
+      const score = Math.round((puntosObtenidos / Math.max(1, totalPuntosPosibles)) * 100);
+
+      const objetivosData = {
+        autorCorrecto: autorCorrectoCount > 0,
+        zonaCorrecta: zonaCorrectaCount > 0,
+        puntajeExtra: 0
       };
       setObjetivosFeedback(objetivosData);
 
@@ -1391,6 +1421,13 @@ function DashboardInvestigator({ token }) {
       setSelectedNodeIds([]);
       setIsFeedbackModalOpen(true);
 
+      const groupJustifications = {};
+      Object.entries(groupMeta).forEach(([k, meta]) => {
+        if (meta.justificacionGeneral) {
+          groupJustifications[k] = meta.justificacionGeneral;
+        }
+      });
+
       await saveInitialFeedback({
         expectedTotal: expectedPairs.size,
         userTotal: userPairs.size,
@@ -1398,6 +1435,9 @@ function DashboardInvestigator({ token }) {
         correct,
         incorrect,
         missing,
+        caseGuesses,
+        groupGuesses,
+        groupJustifications,
       });
     } catch (requestError) {
       console.error('Error finishing investigation:', requestError);
@@ -1431,23 +1471,43 @@ function DashboardInvestigator({ token }) {
   };
 
   return (
-    <div className="h-screen bg-investigation-bg text-slate-100">
-      <div className="flex h-full">
-        <aside className="w-[360px] border-r border-slate-600/30 bg-slate-950/70 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="font-mono text-lg tracking-[0.18em] text-cyan-200">MODO INVESTIGADOR</h1>
-              <p className="mt-1 text-xs text-slate-400">{usuario?.nombre ? `Sesion: ${usuario.nombre}` : 'Sesion activa'}</p>
-            </div>
+    <div className="flex h-screen flex-col bg-investigation-bg text-slate-100">
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-600/30 bg-slate-950/80 px-6 py-3">
+        <div className="flex items-center gap-8">
+          <h1 className="font-mono text-lg tracking-[0.18em] text-cyan-200">MODO INVESTIGADOR</h1>
+          <nav className="flex gap-2">
             <button
               type="button"
-              onClick={logout}
-              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
+              onClick={() => setActiveTab('tablero')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${activeTab === 'tablero' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:bg-slate-800'}`}
             >
-              Cerrar sesion
+              Tablero Analítico
             </button>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Explora carpetas, revisa documentos y construye el grafo investigativo.</p>
+            <button
+              type="button"
+              onClick={() => setActiveTab('casos')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${activeTab === 'casos' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:bg-slate-800'}`}
+            >
+              Gestión de Casos
+            </button>
+          </nav>
+        </div>
+        <div className="flex items-center gap-4">
+          <p className="text-xs text-slate-400">{usuario?.nombre ? `Sesión: ${usuario.nombre}` : 'Sesión activa'}</p>
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {activeTab === 'tablero' ? (
+          <>
+            <aside className="w-[360px] border-r border-slate-600/30 bg-slate-950/70 p-4">
 
           <div className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
             <div className="flex items-center justify-between">
@@ -1459,90 +1519,6 @@ function DashboardInvestigator({ token }) {
             <p className={`mt-1 font-mono text-xl ${(tiempoLimiteMinutos * 60 - elapsedSeconds) < 60 ? 'text-orange-400 animate-pulse' : 'text-slate-100'}`}>
               {formatSeconds(Math.max(0, tiempoLimiteMinutos * 60 - elapsedSeconds))}
             </p>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Misiones Estratégicas</p>
-              
-              <div className="mb-3">
-                <label className="text-[10px] text-slate-300">Identificar Autor Intelectual</label>
-                <select
-                  disabled={investigationFinished}
-                  value={autorIntelectualGuess}
-                  onChange={(e) => setAutorIntelectualGuess(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-500/30 bg-slate-900 px-2 py-1 text-xs text-slate-200 outline-none"
-                >
-                  <option value="">Selecciona el caso sospechoso...</option>
-                  {carpetas.map(c => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-300">Zona de Operación</label>
-                <select
-                  disabled={investigationFinished}
-                  value={zonaOperacionGuess}
-                  onChange={(e) => setZonaOperacionGuess(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-500/30 bg-slate-900 px-2 py-1 text-xs text-slate-200 outline-none"
-                >
-                  <option value="">Selecciona el caso clave...</option>
-                  {carpetas.map(c => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-          <div className="mt-4 rounded-lg border border-slate-500/20 bg-slate-900/60 p-3">
-            <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Carpetas</p>
-            <div className="max-h-[26vh] space-y-2 overflow-y-auto pr-1">
-              {loadingCases ? (
-                <p className="text-sm text-slate-400">Cargando carpetas...</p>
-              ) : (
-                carpetas.map((caseItem) => (
-                  (() => {
-                    const metadata = caseMetadataById.get(caseItem.id);
-                    return (
-                  <button
-                    key={caseItem.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCaseId(caseItem.id);
-                      setSelectedDocument(null);
-                    }}
-                    className={`w-full rounded-md border px-3 py-2 text-left transition ${
-                      selectedCaseId === caseItem.id
-                        ? 'border-cyan-400/60 bg-cyan-500/10'
-                        : 'border-slate-500/20 bg-slate-950/50 hover:border-cyan-400/30'
-                    }`}
-                  >
-                    <p className="flex items-center gap-2 font-mono text-sm text-slate-100">
-                      <FiFolder size={14} />
-                      {caseItem.nombre}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">{caseItem.cantidad_documentos || 0} documentos</p>
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] text-slate-300">
-                      <p className="flex items-center gap-1 truncate">
-                        <FiAlertTriangle size={10} className="text-amber-300" />
-                        {metadata?.offenseType || 'Sin delito'}
-                      </p>
-                      <p className="flex items-center gap-1 truncate">
-                        <FiCalendar size={10} className="text-cyan-300" />
-                        {metadata?.caseDateLabel || 'Sin fecha'}
-                      </p>
-                      <p className="col-span-2 flex items-center gap-1 truncate">
-                        <FiMapPin size={10} className="text-emerald-300" />
-                        {metadata?.zone || 'Sin zona'}
-                      </p>
-                    </div>
-                  </button>
-                    );
-                  })()
-                ))
-              )}
-            </div>
           </div>
 
         </aside>
@@ -1769,12 +1745,44 @@ function DashboardInvestigator({ token }) {
                               <option value="modalidad">Asociado por modalidad</option>
                               <option value="patrones">Asociado por patron</option>
                             </select>
+
+                            <select
+                              disabled={investigationFinished}
+                              value={groupGuesses[group.key]?.autorIntelectual || ''}
+                              onChange={(e) => setGroupGuesses(prev => ({ ...prev, [group.key]: { ...prev[group.key], autorIntelectual: e.target.value } }))}
+                              className="mt-1 w-full rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
+                            >
+                              <option value="">¿Autor Intelectual General?</option>
+                              {carpetas.map(c => (
+                                <option key={c.id} value={c.id}>{c.nombre}</option>
+                              ))}
+                            </select>
+
+                            <select
+                              disabled={investigationFinished}
+                              value={groupGuesses[group.key]?.zonaOperacion || ''}
+                              onChange={(e) => setGroupGuesses(prev => ({ ...prev, [group.key]: { ...prev[group.key], zonaOperacion: e.target.value } }))}
+                              className="mt-1 w-full rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
+                            >
+                              <option value="">¿Zona de Operación General?</option>
+                              {carpetas.map(c => (
+                                <option key={c.id} value={c.id}>{c.nombre}</option>
+                              ))}
+                            </select>
+                            
+                            <textarea
+                              disabled={investigationFinished}
+                              value={groupMeta[group.key]?.justificacionGeneral || ''}
+                              onChange={(e) => updateGroupMeta(group.key, { justificacionGeneral: e.target.value })}
+                              placeholder="Justificación general del grupo..."
+                              className="mt-1 h-14 w-full resize-none rounded border border-slate-500/20 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 outline-none"
+                            />
                           </div>
                         </div>
                           <button
                             type="button"
                             onClick={() => finalizeGroup(group)}
-                            disabled={investigationFinished || Boolean(finalizedGroups[group.key])}
+                            disabled={investigationFinished || Boolean(finalizedGroups[group.key]) || !(groupMeta[group.key]?.justificacionGeneral?.trim())}
                             className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <FiSave size={13} />
@@ -1887,18 +1895,86 @@ function DashboardInvestigator({ token }) {
             </div>
           </div>
         </main>
+          </>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-950/40">
+            <div className="mx-auto max-w-6xl">
+              <h2 className="mb-6 text-2xl font-bold text-cyan-400">Gestión General de Casos</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {carpetas.map((caseItem) => {
+                  const meta = caseMetadataById.get(caseItem.id);
+                  const isIntellectual = caseGuesses[caseItem.id]?.autorIntelectual || '';
+                  const opZone = caseGuesses[caseItem.id]?.zonaOperacion || '';
+                  return (
+                    <div key={caseItem.id} className="rounded-xl border border-slate-600/30 bg-slate-900/80 p-5 shadow-lg">
+                      <div className="flex items-start justify-between">
+                        <h3 className="text-lg font-semibold text-cyan-200">{caseItem.nombre}</h3>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCaseId(caseItem.id);
+                            setIsCaseSummaryOpen(true);
+                          }}
+                          className="text-xs text-cyan-400 underline hover:text-cyan-300"
+                        >
+                          Ver Detalles
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{meta?.offenseType || 'Sin delito'}</p>
+                      <p className="text-xs text-slate-400">{meta?.caseDateLabel || 'Sin fecha'} - {meta?.zone || 'Sin zona'}</p>
+
+                      <div className="mt-5 space-y-4 border-t border-slate-700/50 pt-4">
+                        <div>
+                          <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">¿Es el Autor Intelectual?</label>
+                          <select
+                            disabled={investigationFinished}
+                            value={isIntellectual}
+                            onChange={(e) => setCaseGuesses(prev => ({ ...prev, [caseItem.id]: { ...prev[caseItem.id], autorIntelectual: e.target.value } }))}
+                            className="mt-1 w-full rounded border border-slate-600/50 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-cyan-500"
+                          >
+                            <option value="">No definido</option>
+                            <option value="si">Sí, es autor intelectual</option>
+                            <option value="no">No lo es</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">¿Es la Zona de Operación Principal?</label>
+                          <select
+                            disabled={investigationFinished}
+                            value={opZone}
+                            onChange={(e) => setCaseGuesses(prev => ({ ...prev, [caseItem.id]: { ...prev[caseItem.id], zonaOperacion: e.target.value } }))}
+                            className="mt-1 w-full rounded border border-slate-600/50 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-cyan-500"
+                          >
+                            <option value="">No definido</option>
+                            <option value="si">Sí, es la zona de operación</option>
+                            <option value="no">No lo es</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {pendingConnection && (
+      {pendingConnections.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-5 shadow-[0_0_45px_rgba(8,145,178,0.28)]">
-            <h2 className="mb-2 text-xl font-bold text-cyan-400">Justificar Conexión</h2>
+            <h2 className="mb-2 text-xl font-bold text-cyan-400">Justificar Conexión(es)</h2>
             <p className="mb-4 text-xs text-slate-300">
-              Has trazado una conexión entre: <br/>
-              <span className="font-semibold text-cyan-200">{caseNameById.get(pendingConnection.a)}</span>
-              <br/> y <br/>
-              <span className="font-semibold text-cyan-200">{caseNameById.get(pendingConnection.b)}</span>
+              Has trazado {pendingConnections.length} conexión(es) entre los casos:
             </p>
+            <ul className="mb-4 max-h-32 overflow-y-auto pl-4 text-xs text-cyan-200">
+              {pendingConnections.map((edge) => (
+                <li key={getPairKey(edge.a, edge.b)} className="mb-1 list-disc">
+                  <span className="font-semibold">{caseNameById.get(edge.a)}</span> - <span className="font-semibold">{caseNameById.get(edge.b)}</span>
+                </li>
+              ))}
+            </ul>
             <textarea
               value={justificationText}
               onChange={(e) => setJustificationText(e.target.value)}
@@ -1909,7 +1985,7 @@ function DashboardInvestigator({ token }) {
               <button
                 type="button"
                 onClick={() => {
-                  setPendingConnection(null);
+                  setPendingConnections([]);
                   setJustificationText('');
                   setSelectedNodeIds([]);
                 }}
@@ -1921,13 +1997,16 @@ function DashboardInvestigator({ token }) {
                 type="button"
                 disabled={justificationText.trim().length === 0}
                 onClick={() => {
-                  const key = getPairKey(pendingConnection.a, pendingConnection.b);
-                  setConnections((current) => [...current, pendingConnection]);
-                  setConnectionJustifications(prev => ({
-                    ...prev,
-                    [key]: justificationText.trim()
-                  }));
-                  setPendingConnection(null);
+                  setConnections((current) => [...current, ...pendingConnections]);
+                  setConnectionJustifications(prev => {
+                    const next = { ...prev };
+                    pendingConnections.forEach(edge => {
+                      const key = getPairKey(edge.a, edge.b);
+                      next[key] = justificationText.trim();
+                    });
+                    return next;
+                  });
+                  setPendingConnections([]);
                   setJustificationText('');
                   setSelectedNodeIds([]);
                 }}
