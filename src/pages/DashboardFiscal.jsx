@@ -296,7 +296,7 @@ function buildCompactGraphLayout(nodes, width = 320, height = 150) {
   };
 }
 
-function DashboardInvestigator({ token }) {
+function DashboardFiscal({ token }) {
   const boardRef = useRef(null);
   const groupedRegionsRef = useRef([]);
   const { usuario, logout } = useAuthStore();
@@ -367,9 +367,9 @@ function DashboardInvestigator({ token }) {
         setNodes(generatedNodes);
         setVelocities(generatedVelocities);
       } catch (requestError) {
-        console.error('Error loading cases for investigator:', requestError);
+        console.error('Error loading cases for fiscal:', requestError);
         if (!cancelled) {
-          setError('No fue posible cargar las carpetas para el investigador.');
+          setError('No fue posible cargar las carpetas para el fiscal.');
         }
       } finally {
         if (!cancelled) {
@@ -1150,8 +1150,8 @@ function DashboardInvestigator({ token }) {
       });
     };
 
-    writeLine('Feedback Investigador - PRISMA DAE', 15, [0, 90, 140]);
-    writeLine(`Investigador: ${usuario?.nombre || 'Sin nombre'}`);
+    writeLine('Feedback Fiscal - PRISMA DAE', 15, [0, 90, 140]);
+    writeLine(`Fiscal: ${usuario?.nombre || 'Sin nombre'}`);
     writeLine(`Fecha: ${new Date().toLocaleString()}`);
     writeLine(`Puntaje: ${validationResult.score}%`);
     writeLine(`Esperadas: ${validationResult.expectedTotal} | Trazadas: ${validationResult.userTotal}`);
@@ -1191,7 +1191,7 @@ function DashboardInvestigator({ token }) {
       });
     }
 
-    const safeName = (usuario?.nombre || 'investigador').replace(/\s+/g, '-').toLowerCase();
+    const safeName = (usuario?.nombre || 'fiscal').replace(/\s+/g, '-').toLowerCase();
     doc.save(`feedback-${safeName}.pdf`);
   };
 
@@ -1312,7 +1312,7 @@ function DashboardInvestigator({ token }) {
         <aside className="w-[360px] border-r border-slate-600/30 bg-slate-950/70 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="font-mono text-lg tracking-[0.18em] text-cyan-200">MODO INVESTIGADOR</h1>
+              <h1 className="font-mono text-lg tracking-[0.18em] text-cyan-200">MODO FISCAL</h1>
               <p className="mt-1 text-xs text-slate-400">{usuario?.nombre ? `Sesion: ${usuario.nombre}` : 'Sesion activa'}</p>
             </div>
             <button
@@ -1323,7 +1323,7 @@ function DashboardInvestigator({ token }) {
               Cerrar sesion
             </button>
           </div>
-          <p className="mt-2 text-xs text-slate-400">Explora carpetas, revisa documentos y construye el grafo investigativo.</p>
+          <p className="mt-2 text-xs text-slate-400">Explora carpetas, revisa documentos y construye el grafo de investigacion estrategica.</p>
 
           <div className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
             <div className="flex items-center gap-2 text-sm text-cyan-200">
@@ -1733,7 +1733,7 @@ function DashboardInvestigator({ token }) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Feedback Final</p>
-                <p className="mt-1 font-mono text-lg text-slate-100">{usuario?.nombre || 'Investigador'}</p>
+                <p className="mt-1 font-mono text-lg text-slate-100">{usuario?.nombre || 'Fiscal'}</p>
               </div>
               <button
                 type="button"
@@ -1966,4 +1966,4 @@ function DashboardInvestigator({ token }) {
   );
 }
 
-export default DashboardInvestigator;
+export default DashboardFiscal;

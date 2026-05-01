@@ -40,7 +40,7 @@ router.post('/login', async (req, res) => {
     const passwordValido = await matchesPassword(
       password,
       usuario.password_hash,
-      usuario.rol === 'admin' ? 'admin123' : 'investigador123'
+      usuario.rol === 'admin' ? 'admin123' : 'fiscal123'
     );
 
     if (!passwordValido) {

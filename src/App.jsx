@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useAuthStore from './store/useAuthStore';
 import LoginPage from './pages/LoginPage';
 import DashboardAdmin from './pages/DashboardAdmin';
-import DashboardInvestigator from './pages/DashboardInvestigator';
+import DashboardFiscal from './pages/DashboardFiscal';
 
 function App() {
   const { isAuthenticated, usuario, token, restaurarSesion } = useAuthStore();
@@ -29,7 +29,7 @@ function App() {
     return <DashboardAdmin />;
   }
 
-  return <DashboardInvestigator token={token} usuario={usuario} />;
+  return <DashboardFiscal token={token} usuario={usuario} />;
 }
 
 export default App;

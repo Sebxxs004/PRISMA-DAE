@@ -12,7 +12,7 @@ CREATE TABLE roles (
 -- Insertar roles predefinidos
 INSERT INTO roles (nombre, descripcion) VALUES
   ('admin', 'Administrador del sistema - puede crear y editar casos'),
-  ('investigador', 'Investigador - puede consultar casos y crear análisis');
+  ('fiscal', 'Fiscal - puede consultar casos y crear análisis');
 
 -- Tabla de Usuarios
 CREATE TABLE usuarios (
@@ -112,8 +112,8 @@ CREATE TABLE grupos_asociacion_exclusiones (
   UNIQUE (grupo_id, carpeta_id)
 );
 
--- Tabla de feedback final de la prueba investigativa (una por investigador)
-CREATE TABLE evaluaciones_investigador (
+-- Tabla de feedback final de la prueba investigativa (una por fiscal)
+CREATE TABLE evaluaciones_fiscal (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   usuario_id UUID UNIQUE NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   usuario_nombre VARCHAR(120),
@@ -129,7 +129,7 @@ CREATE TABLE evaluaciones_investigador (
 -- Justificaciones de desacuerdo por conexión (solo cuando hay texto)
 CREATE TABLE evaluacion_justificaciones (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  evaluacion_id UUID NOT NULL REFERENCES evaluaciones_investigador(id) ON DELETE CASCADE,
+  evaluacion_id UUID NOT NULL REFERENCES evaluaciones_fiscal(id) ON DELETE CASCADE,
   pair_key TEXT NOT NULL,
   pair_label TEXT NOT NULL,
   reason TEXT NOT NULL,
@@ -149,9 +149,9 @@ CREATE INDEX idx_documentos_created_by ON documentos(created_by);
 INSERT INTO usuarios (nombre, email, password_hash, rol_id) VALUES
   ('Admin PRISMA', 'admin@prisma.dae', '$2a$10$s6yQpoOpta7funCAvjN9Du0vmfL1gPTKiIdbioiqsxZ7j.mWTLiyi', 1);
 
--- Insertar usuario investigador de prueba (contraseña: investigador123)
+-- Insertar usuario fiscal de prueba (contraseña: fiscal123)
 INSERT INTO usuarios (nombre, email, password_hash, rol_id) VALUES
-  ('Investigador PRISMA', 'investigador@prisma.dae', '$2a$10$FKHCQXc7XFTROoLbl0aafuevadc.P1WuDQKOnmT8PZWszPqJed9l.', 2);
+  ('Fiscal PRISMA', 'fiscal@prisma.dae', '$2a$10$FKHCQXc7XFTROoLbl0aafuevadc.P1WuDQKOnmT8PZWszPqJed9l.', 2);
 
 -- Casos de prueba para mostrar el juego
 INSERT INTO carpetas (nombre, descripcion, imagen_url, modalidad, patrones, es_aislado, created_by)

@@ -13,7 +13,7 @@ const ensureSchema = async () => {
   }
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS evaluaciones_investigador (
+    CREATE TABLE IF NOT EXISTS evaluaciones_fiscal (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
       usuario_id UUID UNIQUE NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       usuario_nombre VARCHAR(120),
@@ -30,7 +30,7 @@ const ensureSchema = async () => {
 
     CREATE TABLE IF NOT EXISTS evaluacion_justificaciones (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-      evaluacion_id UUID NOT NULL REFERENCES evaluaciones_investigador(id) ON DELETE CASCADE,
+      evaluacion_id UUID NOT NULL REFERENCES evaluaciones_fiscal(id) ON DELETE CASCADE,
       pair_key TEXT NOT NULL,
       pair_label TEXT NOT NULL,
       reason TEXT NOT NULL,
@@ -41,22 +41,22 @@ const ensureSchema = async () => {
   `);
 
   await pool.query(`
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS resuelto BOOLEAN NOT NULL DEFAULT FALSE;
 
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS plan_accion JSONB NOT NULL DEFAULT '[]'::jsonb;
 
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS case_guesses JSONB NOT NULL DEFAULT '{}'::jsonb;
 
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS group_guesses JSONB NOT NULL DEFAULT '{}'::jsonb;
 
-    ALTER TABLE evaluaciones_investigador
+    ALTER TABLE evaluaciones_fiscal
     ADD COLUMN IF NOT EXISTS group_justifications JSONB NOT NULL DEFAULT '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS investigacion_borradores (
@@ -125,7 +125,7 @@ router.get('/me', authenticate, async (req, res) => {
     await ensureSchema();
 
     const feedbackResult = await pool.query(
-      'SELECT * FROM evaluaciones_investigador WHERE usuario_id = $1 LIMIT 1',
+      'SELECT * FROM evaluaciones_fiscal WHERE usuario_id = $1 LIMIT 1',
       [req.user.id]
     );
 
@@ -141,8 +141,8 @@ router.get('/me', authenticate, async (req, res) => {
       feedback: mapFeedbackResponse(feedback, justificaciones),
     });
   } catch (error) {
-    console.error('Error obteniendo feedback del investigador:', error);
-    return res.status(500).json({ error: 'No fue posible obtener el feedback del investigador' });
+    console.error('Error obteniendo feedback del fiscal:', error);
+    return res.status(500).json({ error: 'No fue posible obtener el feedback del fiscal' });
   }
 });
 
@@ -210,7 +210,7 @@ router.post('/', authenticate, async (req, res) => {
     await ensureSchema();
 
     const existingResult = await client.query(
-      'SELECT * FROM evaluaciones_investigador WHERE usuario_id = $1 LIMIT 1',
+      'SELECT * FROM evaluaciones_fiscal WHERE usuario_id = $1 LIMIT 1',
       [req.user.id]
     );
 
@@ -236,7 +236,7 @@ router.post('/', authenticate, async (req, res) => {
       const existingFeedback = existingResult.rows[0];
       const justificacionesRows = await fetchJustificaciones(existingFeedback.id);
       return res.status(409).json({
-        error: 'La prueba ya fue presentada por este investigador',
+        error: 'La prueba ya fue presentada por este fiscal',
         feedback: mapFeedbackResponse(existingFeedback, justificacionesRows),
       });
     }
@@ -249,7 +249,7 @@ router.post('/', authenticate, async (req, res) => {
       const existingFeedback = existingResult.rows[0];
       const updatedResult = await client.query(
         `
-        UPDATE evaluaciones_investigador
+        UPDATE evaluaciones_fiscal
         SET
           usuario_nombre = $1,
           puntaje = $2,
@@ -288,7 +288,7 @@ router.post('/', authenticate, async (req, res) => {
     } else {
       const insertFeedbackResult = await client.query(
         `
-        INSERT INTO evaluaciones_investigador
+        INSERT INTO evaluaciones_fiscal
           (usuario_id, usuario_nombre, puntaje, expected_total, user_total, correct_pairs, incorrect_pairs, missing_pairs, resuelto, plan_accion, case_guesses, group_guesses, group_justifications)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, TRUE, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb)
         RETURNING *
@@ -331,8 +331,8 @@ router.post('/', authenticate, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error creando feedback del investigador:', error);
-    return res.status(500).json({ error: 'No fue posible guardar el feedback del investigador' });
+    console.error('Error creando feedback del fiscal:', error);
+    return res.status(500).json({ error: 'No fue posible guardar el feedback del fiscal' });
   } finally {
     client.release();
   }
@@ -345,12 +345,12 @@ router.put('/me/justificaciones', authenticate, async (req, res) => {
     await ensureSchema();
 
     const feedbackResult = await client.query(
-      'SELECT * FROM evaluaciones_investigador WHERE usuario_id = $1 LIMIT 1',
+      'SELECT * FROM evaluaciones_fiscal WHERE usuario_id = $1 LIMIT 1',
       [req.user.id]
     );
 
     if (feedbackResult.rows.length === 0) {
-      return res.status(404).json({ error: 'No hay feedback registrado para este investigador' });
+      return res.status(404).json({ error: 'No hay feedback registrado para este fiscal' });
     }
 
     const feedback = feedbackResult.rows[0];
@@ -372,7 +372,7 @@ router.put('/me/justificaciones', authenticate, async (req, res) => {
 
     const updateFeedbackResult = await client.query(
       `
-      UPDATE evaluaciones_investigador
+      UPDATE evaluaciones_fiscal
       SET plan_accion = $1::jsonb, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING *
@@ -404,7 +404,7 @@ router.get('/justificaciones', authenticate, requireAdmin, async (_req, res) => 
       SELECT
         ei.id AS evaluacion_id,
         ei.usuario_id,
-        COALESCE(u.nombre, ei.usuario_nombre) AS investigador_nombre,
+        COALESCE(u.nombre, ei.usuario_nombre) AS fiscal_nombre,
         ei.puntaje,
         ei.expected_total,
         ei.user_total,
@@ -414,7 +414,7 @@ router.get('/justificaciones', authenticate, requireAdmin, async (_req, res) => 
         ej.pair_label,
         ej.reason,
         ej.created_at AS justificacion_fecha
-      FROM evaluaciones_investigador ei
+      FROM evaluaciones_fiscal ei
       JOIN evaluacion_justificaciones ej ON ei.id = ej.evaluacion_id
       LEFT JOIN usuarios u ON u.id = ei.usuario_id
       WHERE LENGTH(TRIM(COALESCE(ej.reason, ''))) > 0

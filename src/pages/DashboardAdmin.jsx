@@ -16,8 +16,8 @@ import {
 } from 'react-icons/fi';
 import useAuthStore from '../store/useAuthStore';
 import AssociationGroupsPage from './AssociationGroupsPage';
-import InvestigatorFeedbackPage from './InvestigatorFeedbackPage';
-import InvestigatorsManagementPage from './InvestigatorsManagementPage';
+import FiscalFeedbackPage from './FiscalFeedbackPage';
+import FiscalsManagementPage from './FiscalsManagementPage';
 
 const API_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : (import.meta.env.VITE_API_URL || '/api');
 const EMPTY_DOCUMENT = { nombre: '', descripcion: '', archivo_url: '' };
@@ -591,7 +591,7 @@ function DashboardAdmin() {
 
   if (activeSection === 'feedback') {
     return (
-      <InvestigatorFeedbackPage
+      <FiscalFeedbackPage
         token={token}
         onBack={() => setActiveSection('casos')}
       />
@@ -600,7 +600,7 @@ function DashboardAdmin() {
 
   if (activeSection === 'investigadores') {
     return (
-      <InvestigatorsManagementPage
+      <FiscalsManagementPage
         token={token}
         onBack={() => setActiveSection('casos')}
       />

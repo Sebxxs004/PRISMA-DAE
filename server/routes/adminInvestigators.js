@@ -29,7 +29,7 @@ const requireAdmin = (req, res, next) => {
 
 const ensureSchema = async () => {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS evaluaciones_investigador (
+    CREATE TABLE IF NOT EXISTS evaluaciones_fiscal (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
       usuario_id UUID UNIQUE NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       usuario_nombre VARCHAR(120),
@@ -56,7 +56,7 @@ const ensureSchema = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS evaluacion_justificaciones (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-      evaluacion_id UUID NOT NULL REFERENCES evaluaciones_investigador(id) ON DELETE CASCADE,
+      evaluacion_id UUID NOT NULL REFERENCES evaluaciones_fiscal(id) ON DELETE CASCADE,
       pair_key TEXT NOT NULL,
       pair_label TEXT NOT NULL,
       reason TEXT NOT NULL,
@@ -92,16 +92,16 @@ router.get('/investigadores', authenticate, requireAdmin, async (_req, res) => {
       SELECT ${investigatorFields}
       FROM usuarios u
       JOIN roles r ON u.rol_id = r.id
-      LEFT JOIN evaluaciones_investigador ei ON ei.usuario_id = u.id
-      WHERE r.nombre = 'investigador'
+      LEFT JOIN evaluaciones_fiscal ei ON ei.usuario_id = u.id
+      WHERE r.nombre = 'fiscal'
       ORDER BY u.created_at DESC
       `
     );
 
     return res.json(result.rows);
   } catch (error) {
-    console.error('Error listando investigadores:', error);
-    return res.status(500).json({ error: 'No fue posible listar investigadores' });
+    console.error('Error listando fiscales:', error);
+    return res.status(500).json({ error: 'No fue posible listar fiscales' });
   }
 });
 
@@ -114,9 +114,9 @@ router.post('/investigadores', authenticate, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Nombre, email y contraseña son requeridos' });
     }
 
-    const roleResult = await pool.query('SELECT id FROM roles WHERE nombre = $1', ['investigador']);
+    const roleResult = await pool.query('SELECT id FROM roles WHERE nombre = $1', ['fiscal']);
     if (roleResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Rol investigador no existe' });
+      return res.status(400).json({ error: 'Rol fiscal no existe' });
     }
 
     const hashedPassword = await bcryptjs.hash(String(password), 10);
@@ -131,8 +131,8 @@ router.post('/investigadores', authenticate, requireAdmin, async (req, res) => {
 
     return res.status(201).json({ usuario: result.rows[0] });
   } catch (error) {
-    console.error('Error creando investigador:', error);
-    return res.status(500).json({ error: 'No fue posible crear el investigador' });
+    console.error('Error creando fiscal:', error);
+    return res.status(500).json({ error: 'No fue posible crear el fiscal' });
   }
 });
 
@@ -152,12 +152,12 @@ router.patch('/investigadores/:id/password', authenticate, requireAdmin, async (
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Investigador no encontrado' });
+      return res.status(404).json({ error: 'Fiscal no encontrado' });
     }
 
     return res.json({ usuario: result.rows[0] });
   } catch (error) {
-    console.error('Error actualizando contrasena de investigador:', error);
+    console.error('Error actualizando contraseña de fiscal:', error);
     return res.status(500).json({ error: 'No fue posible actualizar la contrasena' });
   }
 });
@@ -171,7 +171,7 @@ router.patch('/investigadores/:id/resuelto', authenticate, requireAdmin, async (
 
     const result = await pool.query(
       `
-      UPDATE evaluaciones_investigador
+      UPDATE evaluaciones_fiscal
       SET resuelto = $1, updated_at = CURRENT_TIMESTAMP
       WHERE usuario_id = $2
       RETURNING *
@@ -180,12 +180,12 @@ router.patch('/investigadores/:id/resuelto', authenticate, requireAdmin, async (
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'No hay evaluacion registrada para este investigador' });
+      return res.status(404).json({ error: 'No hay evaluacion registrada para este fiscal' });
     }
 
     return res.json({ feedback: result.rows[0] });
   } catch (error) {
-    console.error('Error actualizando estado resuelto del investigador:', error);
+    console.error('Error actualizando estado resuelto del fiscal:', error);
     return res.status(500).json({ error: 'No fue posible actualizar el estado de resuelto' });
   }
 });

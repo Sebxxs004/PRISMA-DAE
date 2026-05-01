@@ -65,9 +65,9 @@ La aplicación estará disponible en: `http://localhost:5173`
 - **Email:** `admin@prisma.dae`
 - **Contraseña:** `admin123`
 
-### Investigador
-- **Email:** `investigador@prisma.dae`
-- **Contraseña:** `investigador123`
+### Fiscal
+- **Email:** `fiscal@prisma.dae`
+- **Contraseña:** `fiscal123`
 
 ---
 
@@ -75,7 +75,7 @@ La aplicación estará disponible en: `http://localhost:5173`
 
 ### Tablas Principales
 - **usuarios**: Gestión de usuarios y autenticación
-- **roles**: Admin e Investigador (predefinidos)
+- **roles**: Admin y Fiscal (predefinidos)
 - **carpetas**: Casos de investigación
 - **documentos**: Archivos dentro de cada caso
 - **conexiones**: Nexos entre casos (para grafo 3D)
